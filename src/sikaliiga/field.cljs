@@ -1,5 +1,15 @@
 (ns sikaliiga.field
-  (:require [sikaliiga.player :as player]))
+  (:require [clojure.spec :as s]
+            [sikaliiga.player :as player]))
+
+(s/def ::index integer?)
+(s/def ::shift-forwards integer?)
+(s/def ::shift-defenders integer?)
+(s/def ::goalie (s/nilable uuid?))
+(s/def ::defenders (s/nilable (s/tuple uuid? uuid?)))
+(s/def ::forwards (s/coll-of uuid? :kind list? :min-count 2 :max-count 4))
+(s/def ::players (s/tuple ::goalie ::defenders ::forwards))
+(s/def ::field (s/keys :req-un [::index ::shift-forwards ::shift-defenders ::players]))
 
 (defn get-goalie [field]
   (first (:players field)))
@@ -24,17 +34,6 @@
 
 (defn get-extra-forward [field]
   (nth (get-forwards field) 3))
-
-(defn calculate-attack [field]
-  ;; TODO: Powerplay
-  (/ (reduce + 0 (map :attack (get-forwards field))) 3))
-
-(defn calculate-defense [field]
-  ;; TODO: Powerplay
-  (/ (reduce + 0 (map :defense (get-defenders field))) 2))
-
-(defn calculate-goalie [field]
-  (or (:defense (first field)) 0))
 
 ;; `field-out` prepared field consisting of actual players instead of id's.
 ;; Map `field-out` stats from `team` back to `new-team`.

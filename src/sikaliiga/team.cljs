@@ -4,7 +4,7 @@
             [sikaliiga.player :as player]
             [sikaliiga.field :as field]))
 
-(s/def ::id string?)
+(s/def ::id uuid?)
 (s/def ::name string?)
 (s/def ::players (s/map-of string? ::player/player))
 
@@ -35,7 +35,7 @@
                  (player/make-player :position ::player/right-wing :min-skill min-skill :max-skill max-skill)
                  (player/make-player :position ::player/right-wing :min-skill min-skill :max-skill max-skill)]
 
-        team {:id (str (random-uuid))
+        team {:id (random-uuid)
               :name (str "Test team (" min-skill " - " max-skill ")")
               ;; FIXME: Should players be stored by id?
               :players (util/key-by :id players)}]

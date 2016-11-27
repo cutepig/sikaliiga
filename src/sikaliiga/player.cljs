@@ -3,11 +3,11 @@
             [sikaliiga.util :refer [rnd irnd]]))
 
 ;; Spec
-(s/def ::id string?)
+(s/def ::id uuid?)
 (s/def ::age integer?)
 (s/def ::name string?)
 (s/def ::locale keyword?)
-(s/def ::position #(contains? [::goalie ::defense ::left-wing ::center ::right-wing]))
+(s/def ::position #(contains? [::goalie ::defense ::left-wing ::center ::right-wing] %))
 (s/def ::attack number?)
 (s/def ::attack-potential number?)
 (s/def ::defense number?)
@@ -50,10 +50,10 @@
   (contains? #{::left-wing ::center ::right-wing} pos))
 
 (defn defense-position? [pos]
-  (= pos :defense ))
+  (= pos ::defense ))
 
 (defn goalie-position? [pos]
-  (= pos :goalie))
+  (= pos ::goalie))
 
 (defn defense-or-goalie-position? [pos]
   (or (defense-position? pos) (goalie-position? pos)))
@@ -73,7 +73,7 @@
         [defense defense-potential] (if (defense-or-goalie-position? position)
                                      [(irnd min-skill max-skill) (irnd min-skill 100)]
                                      [(irnd 1 max-skill) (irnd 1 max-skill)])]
-    {:id (str (random-uuid))
+    {:id (random-uuid)
      :age (irnd 18 35)
      :name (random-name :locale locale)
      :locale locale
