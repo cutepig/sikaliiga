@@ -83,7 +83,7 @@
 (defn auto-field-nth [goalies defenders forwards n]
   [(:id (first goalies))
    (map :id (take 2 (drop (* 2 n) defenders)))
-   (map :id (take 3 (drop (* 3 n) defenders)))])
+   (map :id (take 3 (drop (* 3 n) forwards)))])
 
 (defn auto-fields [team]
   (let [players (vals (:players team))

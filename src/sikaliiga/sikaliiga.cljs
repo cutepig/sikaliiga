@@ -100,13 +100,14 @@
 (defn add-goal [state player]
   (update-in state [:teams (:team player) :players (:id player) :goals] inc))
 
-(defn add-face-off [state winner loser]
+(defn add-face-off [state winner-team winner-player loser-team loser-player]
   (-> state
-      (assoc :posession (:team winner))
-      (update-in [:teams (:team winner) :players (:id winner) :face-offs] inc)
-      (update-in [:teams (:team loser) :players (:id loser) :face-offs] inc)
-      (update-in [:teams (:team winner) :players (:id winner) :face-off-wins] inc)
-      (update :events #(conj % [:face-off (:seconds state) (:id winner) (:id loser)]))))
+      (assoc :posession winner-team)
+      (update-in [:teams winner-team :players winner-player :face-offs] inc)
+      (update-in [:teams loser-team :players loser-player :face-offs] inc)
+      (update-in [:teams winner-team :players winner-player :face-off-wins] inc)
+      ;; FIXME: whats wrong with (:seconds state), it shows 4, 3, 2, 1 for the face offs
+      (update :events #(conj % [:face-off (:seconds state) winner-player loser-player]))))
 
 (comment (defn simulate-shots [state]
   (let [home (get-in state [:teams :home])
@@ -175,15 +176,27 @@
                :defense (calculate-field-defense team field)
                :goalie (calculate-field-goalie team field)))
 
+(defn simulate-shift [state]
+  ;; Shift happens on 0 1200 2400 and 3600 seconds and when shift counter is full.
+  ;; But it is also affected by the posession from the last second; the team that
+  ;; doesn't have the posession is less likely to shift.
+  state)
+
 (defn face-off? [state]
+  ;; TODO: In addition to this, face-off should be flagged on previous second
+  ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
+  ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
   (contains? [0 1200 2400 3600] (:seconds state)))
 
+;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
   (let [center-a (get-in state [:teams :home :players (field/get-center (get-in state [:teams :home :field]))])
         center-b (get-in state [:teams :visitor :players (field/get-center (get-in state [:teams :visitor :field]))])]
+    ;; TODO: Should be affected by whole skill of centers, attack + defense
+    ;; TODO: If we use a face-off flag from previous second, reset that flag.
     (if (< (:attack center-a) (rand (+ (:attack center-a) (:attack center-b))))
-      (add-face-off state center-a center-b)
-      (add-face-off state center-b center-a))))
+      (add-face-off state :home (:id center-a) :visitor (:id center-b))
+      (add-face-off state :visitor (:id center-b) :home (:id center-a)))))
 
 (defn simulate-posession* [state]
   (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))
@@ -201,21 +214,12 @@
   (-> state
       simulate-posession))
 
-;; Team looked like this:
-(defn simulate-game [home visitor]
-  (let [state {:teams {:home home :visitor visitor}}
-        seconds (range 3600)
-        foo (reduce #(simulate-second (assoc %1 :seconds %2)) state seconds)]
-    foo))
-
-;; Starting to look good
-(def team-a (team/make-test-team 50 75))
-(def team-b (team/make-test-team 55 80))
-
 (defn prepare-player [team player]
   (assoc player :team (:id team)
                 :attack (/ (:attack player) 100)
                 :defense (/ (:defense player) 100)
+                :fitness (/ (:fitness player) 100)
+                :morale (/ (:morale player) 100)
                 :shots 0
                 :blocked 0
                 :missed 0
@@ -223,13 +227,15 @@
                 :goals-against 0
                 :blocks 0))
 
-(defn filter-player-by-status [status player]
-  (= (:status player) player))
+(defn prepare-players [team]
+  (->> (vals (:players team))
+       (filter #(= (:status %) ::player/dressed))
+       (map #(prepare-player team %))
+       (util/key-by :id)))
 
 (defn prepare-team [team]
   (merge team
-         ;; TODO: Filter out injured and banned players
-         {:players (util/map-values #(prepare-player team %) (filter #(filter-player-by-status ::player/dressed %2) (:players team)))
+         {:players (prepare-players team)
           :field (first (:fields team))
           :shots 0
           :blocked 0
@@ -242,9 +248,20 @@
   {:teams {:home (prepare-team home)
            :visitor (prepare-team visitor)}})
 
+;; Team looked like this:
+(defn simulate-game [home visitor]
+  (let [state (prepare-state home visitor)
+        seconds (range 3600)
+        foo (reduce #(simulate-second (assoc %1 :seconds %2)) state seconds)]
+    foo))
+
+;; Starting to look good
+(def team-a (team/make-test-team 50 75))
+(def team-b (team/make-test-team 55 80))
+
 (def state (prepare-state team-a team-b))
 
-(simulate-game (prepare-team team-a) (prepare-team team-b))
+(js/console.log (simulate-game team-a team-b))
 
 ;; In-game fields shall look like this
 {:players []
