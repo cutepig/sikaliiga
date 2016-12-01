@@ -60,26 +60,27 @@
     (> (rand (:power-play a)) (+ (rand (* 30 (:goalie b))) (* 15 (:goalie b))))
     (> (rand (:attack a)) (+ (rand (:goalie b)) (/ (:defense b) 3)))))
 
-;; TODO: Tweak this constant
+(def *period-length* (* 20 60))
+(def *game-length* (* 3 *period-length*))
+(def *over-time-length* (* 5 60))
+
+;; Following constants are calculated from Liiga season 2015-2016
 ;; NOTE: Multiply by two because we are halfing the probability with the posession mechanism
-(def *mean-shots-per-sec* (* 2 (/ 40 3600)))
+(def *mean-shots-per-sec* (* 2 (/ 40 *period-length*)))
 (defn shot? [attack defense]
   (< (rand)
      (+ (* (- attack defense) *mean-shots-per-sec*) *mean-shots-per-sec*)))
 
-;; TODO: Tweak this constant
-(def *mean-block-probability* 0.2)
+(def *mean-block-probability* 0.12)
 (defn blocked? [attack defense]
   (< (rand)
      (+ (* (- defense attack) *mean-block-probability*) *mean-block-probability*)))
 
-;; TODO: Tweak this constant
-(def *mean-miss-probability* 0.2)
+(def *mean-miss-probability* 0.34)
 (defn missed? [attack defense]
   (< (rand)
      (+ (* (- (* defense 0.5) attack) *mean-miss-probability*) *mean-miss-probability*)))
 
-;; TODO: Tweak this constant
 ;; TODO: Factor in D to affect shot quality?
 (def *mean-goal-probability* 0.09)
 (defn goal? [attack goalie]
