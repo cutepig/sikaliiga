@@ -6,7 +6,7 @@
             [sikaliiga.team :as team]))
 
 ;; Specs
-{:teams {:home {} :visitor {}}}
+{:teams {:home {} :away {}}}
 {:players {} ; (map prepare-player (:players team))
           :team "uuid"
           :field nil
@@ -38,8 +38,8 @@
 
 (s/def ::seconds integer?)
 (s/def ::home ::team)
-(s/def ::visitor ::team)
-(s/def ::teams (s/keys :req-un [::home ::visitor]))
+(s/def ::away ::team)
+(s/def ::teams (s/keys :req-un [::home ::away]))
 (s/def ::state (s/keys :req-un [::seconds ::teams]))
 
 ;;
@@ -61,7 +61,8 @@
     (> (rand (:attack a)) (+ (rand (:goalie b)) (/ (:defense b) 3)))))
 
 ;; TODO: Tweak this constant
-(def *mean-shots-per-sec* (/ 40 3600))
+;; NOTE: Multiply by two because we are halfing the probability with the posession mechanism
+(def *mean-shots-per-sec* (* 2 (/ 40 3600)))
 (defn shot? [attack defense]
   (< (rand)
      (+ (* (- attack defense) *mean-shots-per-sec*) *mean-shots-per-sec*)))
@@ -88,18 +89,6 @@
 (defn add-posession [state team-id]
   (assoc state :posession team-id))
 
-(defn add-shot [state player]
-  (update-in state [:teams (:team player) :players (:id player) :shots] inc))
-
-(defn add-block [state player]
-  (update-in state [:teams (:team player) :players (:id player) :blocked] inc))
-
-(defn add-miss [state player]
-  (update-in state [:teams (:team player) :players (:id player) :missed] inc))
-
-(defn add-goal [state player]
-  (update-in state [:teams (:team player) :players (:id player) :goals] inc))
-
 (defn add-face-off [state winner-team winner-player loser-team loser-player]
   (-> state
       (assoc :posession winner-team)
@@ -109,9 +98,25 @@
       ;; FIXME: whats wrong with (:seconds state), it shows 4, 3, 2, 1 for the face offs
       (update :events #(conj % [:face-off (:seconds state) winner-player loser-player]))))
 
+(defn add-shot [state team player]
+  (-> state
+      (update-in [:teams team :players player :shots] inc)
+      (update :events #(conj % [:shot (:seconds state) team player]))))
+
+(defn add-block [state blocking-team blocking-player blocked-team blocked-player]
+  (-> state
+      (update-in [:teams blocking-team :players blocking-player :blocks] inc)
+      (update-in [:teams blocked-team :players blocked-player :blocked] inc)))
+
+(defn add-miss [state player]
+  (update-in state [:teams (:team player) :players (:id player) :missed] inc))
+
+(defn add-goal [state player]
+  (update-in state [:teams (:team player) :players (:id player) :goals] inc))
+
 (comment (defn simulate-shots [state]
   (let [home (get-in state [:teams :home])
-        visitor (get-in state [:teams :visitor])]
+        visitor (get-in state [:teams :away])]
     ;; Shot should be affected by whole field A D
     (if (not (shot? (:attack home) (:defense visitor)))
       state
@@ -122,13 +127,13 @@
         ;; [state [add-shot team] [add-block-against team] [add-block opponent]]
         ;; Just went with threading to macro to get immediate result
         ;; Returning list of events allows us to give important meta-data to show full results
-        (-> state (add-shot :home) (add-block-against :home) (add-block :visitor))
+        (-> state (add-shot :home) (add-block-against :home) (add-block :away))
         ;; Miss should be affected by shooter A
         (if (missed? (:attack home) (:defense visitor))
           (-> state (add-shot :home) (add-miss :home))
           ;; Goal should be affected by shooter A and opponent G
           (if (goal? (:attack home) (:goalie visitor))
-            (-> state (add-shot :home) (add-goal :home) (add-goal-against :visitor))
+            (-> state (add-shot :home) (add-goal :home) (add-goal-against :away))
             (-> state (add-shot :home)))))))))
 
 ;; Simulating the second should roughly be smth like this:
@@ -146,26 +151,41 @@
 ;;   blocked?
 ;;   missed?
 ;;   goal?
-
 ;; Part of these has to be done inline without external reducer
+
+(defn calculate-player-attack [team player]
+  ;; FIXME: Proper mapping including team attributes, personal fitness and motivation
+  (:attack player))
+
+(defn calculate-player-defense [team player]
+  ;; FIXME: Proper mapping including team attributes, personal fitness and motivation
+  (:defense player))
+
+(defn calculate-player-skill [team player]
+  ;; FIXME: Proper mapping including team attributes, personal fitness and motivation
+  (+ (calculate-player-attack team player)
+     (calculate-player-defense team player)))
 
 (defn calculate-field-attack [team field]
   ;; TODO: Powerplay
+  ;; FIXME: This should include all field players divided by 5
   (->> (field/get-forwards field)
        (map #(get-in team [:players %]))
-       (map :attack)    ;; TODO: Proper mapping of attack
+       (map #(calculate-player-attack team %))
        (reduce + 0)
        (#(/ % 3))))
 
 (defn calculate-field-defense [team field]
   ;; TODO: Powerplay
+  ;; FIXME: This should include all field players divided by 5
   (->> (field/get-defenders field)
        (map #(get-in team [:players %]))
-       (map :defense)
+       (map #(calculate-player-defense team %))
        (reduce + 0)
        (#(/ % 3))))
 
 (defn calculate-field-skill [team field]
+  ;; FIXME: This should include all field players divided by 5
   (+ (calculate-field-defense team field) (calculate-field-attack team field)))
 
 (defn calculate-field-goalie [team field]
@@ -186,33 +206,63 @@
   ;; TODO: In addition to this, face-off should be flagged on previous second
   ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
   ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
-  (contains? [0 1200 2400 3600] (:seconds state)))
+  (<= 0 (.indexOf [0 1200 2400 3600] (:seconds state))))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
   (let [center-a (get-in state [:teams :home :players (field/get-center (get-in state [:teams :home :field]))])
-        center-b (get-in state [:teams :visitor :players (field/get-center (get-in state [:teams :visitor :field]))])]
+        center-b (get-in state [:teams :away :players (field/get-center (get-in state [:teams :away :field]))])]
     ;; TODO: Should be affected by whole skill of centers, attack + defense
     ;; TODO: If we use a face-off flag from previous second, reset that flag.
     (if (< (:attack center-a) (rand (+ (:attack center-a) (:attack center-b))))
-      (add-face-off state :home (:id center-a) :visitor (:id center-b))
-      (add-face-off state :visitor (:id center-b) :home (:id center-a)))))
+      (add-face-off state :home (:id center-a) :away (:id center-b))
+      (add-face-off state :away (:id center-b) :home (:id center-a)))))
 
 (defn simulate-posession* [state]
   (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))
-        skill-b (calculate-field-skill (get-in state [:teams :visitor]) (get-in state [:teams :visitor :field]))]
+        skill-b (calculate-field-skill (get-in state [:teams :away]) (get-in state [:teams :away :field]))]
     (if (< skill-a (rand (+ skill-a skill-b)))
       (add-posession state :home)
-      (add-posession state :visitor))))
+      (add-posession state :away))))
 
 (defn simulate-posession [state]
   (if (face-off? state)
     (simulate-face-off state)
     (simulate-posession* state)))
 
+(defn simulate-extras [state]
+  state)
+
+(defn get-posession [state]
+  (:posession state))
+
+(defn get-non-posession [state]
+  (let [posession (:posession state)]
+    (first (filter #(not= posession %) (keys (:teams state))))))
+
+(defn get-posession-team [state]
+  (get-in state [:teams (:posession state)]))
+
+(defn get-non-posession-team [state]
+  (get-in state [:teams (get-non-posession state)]))
+
+(defn simulate-shot [state]
+  (let [posession (:posession state)
+        non-posession (get-non-posession state)
+        attacking-team (get-in state [:teams posession])
+        defending-team (get-in state [:teams non-posession])
+        field-attack (calculate-field-attack attacking-team (:field attacking-team))
+        field-defense (calculate-field-defense defending-team (:field defending-team))]
+    (if (shot? field-attack field-defense)
+      (let [shooter-id (rand-nth (field/get-players (:field attacking-team)))]
+        (add-shot state posession shooter-id))
+      state)))
+
 (defn simulate-second [state]
   (-> state
-      simulate-posession))
+      simulate-posession
+      simulate-extras
+      simulate-shot))
 
 (defn prepare-player [team player]
   (assoc player :team (:id team)
@@ -246,7 +296,7 @@
 
 (defn prepare-state [home visitor]
   {:teams {:home (prepare-team home)
-           :visitor (prepare-team visitor)}})
+           :away (prepare-team visitor)}})
 
 ;; Team looked like this:
 (defn simulate-game [home visitor]
@@ -261,7 +311,8 @@
 
 (def state (prepare-state team-a team-b))
 
-(js/console.log (simulate-game team-a team-b))
+(comment
+  (js/console.log (simulate-game team-a team-b)))
 
 ;; In-game fields shall look like this
 {:players []

@@ -11,6 +11,9 @@
 (s/def ::players (s/tuple ::goalie ::defenders ::forwards))
 (s/def ::field (s/keys :req-un [::index ::shift-forwards ::shift-defenders ::players]))
 
+(defn get-players [field]
+  (flatten (rest (:players field))))
+
 (defn get-goalie [field]
   (first (:players field)))
 
