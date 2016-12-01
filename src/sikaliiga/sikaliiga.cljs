@@ -111,10 +111,18 @@
 (defn add-miss [state team player]
   (update-in state [:teams team :players player :missed] inc))
 
+(defn add-sog [state sog-team player sog-against-team goalie]
+  (-> state
+      (update-in [:teams sog-team :players player :sog] inc)
+      ;; FIXME: goalie might be nil, this might effect stats calculation
+      (update-in [:teams sog-against-team :players goalie :sog-against] inc)
+      (update :events #(conj % [:sog (:seconds state) sog-team player sog-against-team goalie]))))
+
 ;; TODO: assists
 (defn add-goal [state goal-team player goal-against-team goalie]
   (-> state
       (update-in [:teams goal-team :players player :goals] inc)
+      ;; FIXME: goalie might be nil, this might effect stats calculation
       (update-in [:teams goal-against-team :players goalie :goals-against] inc)
       (update :events #(conj % [:goal (:seconds state) goal-team player goal-against-team goalie]))))
 
@@ -244,7 +252,7 @@
   (let [goalie (get-goalie defending-team (:field defending-team))]
     (if (goal? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team goalie))
         (add-goal state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie))
-        state)))
+        (add-sog state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie)))))
 
 (defn simulate-miss [state shooter attacking-team defending-team]
   (let [defense (calculate-field-defense defending-team (:field defending-team))]
@@ -325,7 +333,7 @@
     foo))
 
 ;; Starting to look good
-(def team-a (team/make-test-team 50 75))
+(def team-a (team/make-test-team 50 70))
 (def team-b (team/make-test-team 55 80))
 
 (def state (prepare-state team-a team-b))
