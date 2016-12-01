@@ -184,6 +184,9 @@
   ;; doesn't have the posession is less likely to shift.
   state)
 
+(defn get-center [state match-team]
+  (get-in state [:teams match-team :players (field/get-center (get-in state [:teams :home :field]))]))
+
 (defn face-off? [state]
   ;; TODO: In addition to this, face-off should be flagged on previous second
   ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
@@ -192,8 +195,8 @@
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
-  (let [center-a (get-in state [:teams :home :players (field/get-center (get-in state [:teams :home :field]))])
-        center-b (get-in state [:teams :away :players (field/get-center (get-in state [:teams :away :field]))])]
+  (let [center-a (get-center state :home)
+        center-b (get-center state :away)]
     ;; TODO: Should be affected by whole skill of centers, attack + defense
     ;; TODO: If we use a face-off flag from previous second, reset that flag.
     (if (< (:attack center-a) (rand (+ (:attack center-a) (:attack center-b))))
@@ -220,7 +223,7 @@
 
 (defn get-non-posession [state]
   (let [posession (:posession state)]
-    (first (filter #(not= posession %) (keys (:teams state))))))
+    (if (= posession :home) :away :home)))
 
 (defn get-posession-team [state]
   (get-in state [:teams (:posession state)]))
@@ -237,25 +240,36 @@
 (defn get-shooter [team field]
   (get-in team [:players (rand-nth (field/get-players field))]))
 
+(defn simulate-goal [state shooter attacking-team defending-team]
+  (let [goalie (get-goalie defending-team (:field defending-team))]
+    (if (goal? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team goalie))
+        (add-goal state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie))
+        state)))
+
+(defn simulate-miss [state shooter attacking-team defending-team]
+  (let [defense (calculate-field-defense defending-team (:field defending-team))]
+    (if (missed? (calculate-player-attack attacking-team shooter) defense)
+        (add-miss state (:match-team attacking-team) (:id shooter))
+        (simulate-goal state shooter attacking-team defending-team))))
+
+(defn simulate-block [state shooter attacking-team defending-team]
+  (let [blocker (get-blocker defending-team (:field defending-team))]
+    (if (blocked? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team blocker))
+        (add-block state (:match-team defending-team) (:id blocker) (:match-team attacking-team) (:id shooter))
+        (simulate-miss state shooter attacking-team defending-team))))
+
+(defn simulate-shot* [state attacking-team defending-team]
+  (let [shooter (get-shooter attacking-team (:field attacking-team))
+        shot-state (add-shot state (:match-team attacking-team) (:id shooter))]
+    (simulate-block shot-state shooter attacking-team defending-team)))
+
 (defn simulate-shot [state]
-  (let [posession (:posession state)
-        non-posession (get-non-posession state)
-        attacking-team (get-in state [:teams posession])
-        defending-team (get-in state [:teams non-posession])
-        field-attack (calculate-field-attack attacking-team (:field attacking-team))
-        field-defense (calculate-field-defense defending-team (:field defending-team))]
-    (if (shot? field-attack field-defense)
-      (let [shooter (get-shooter attacking-team (:field attacking-team))
-            shot-state (add-shot state posession (:id shooter))
-            blocker (get-blocker defending-team (:field defending-team))
-            goalie (get-goalie defending-team (:field defending-team))]
-        (if (blocked? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team blocker))
-          (add-block shot-state non-posession (:id blocker) posession (:id shooter))
-          (if (missed? (calculate-player-attack attacking-team shooter) field-defense)
-            (add-miss shot-state posession (:id shooter))
-            (if (goal? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team goalie))
-              (add-goal shot-state posession (:id shooter) non-posession (:id goalie))
-              shot-state))))
+  (let [attacking-team (get-in state [:teams (:posession state)])
+        defending-team (get-in state [:teams (get-non-posession state)])
+        attack (calculate-field-attack attacking-team (:field attacking-team))
+        defense (calculate-field-defense defending-team (:field defending-team))]
+    (if (shot? attack defense)
+      (simulate-shot* state attacking-team defending-team)
       state)))
 
 (defn simulate-second [state]
@@ -264,29 +278,33 @@
       simulate-extras
       simulate-shot))
 
-(defn prepare-player [team player]
-  (assoc player :team (:id team)
-                :attack (/ (:attack player) 100)
-                :defense (/ (:defense player) 100)
-                :fitness (/ (:fitness player) 100)
-                :morale (/ (:morale player) 100)
-                :shots 0
-                :blocked 0
-                :missed 0
-                :goals 0
-                :goals-against 0
-                :blocks 0))
+(defn prepare-player [match-team team player]
+  (merge player
+         {:team (:id team)
+          ;; TODO: Utilize :match-team in data mapping
+          :match-team match-team
+          :attack (/ (:attack player) 100)
+          :defense (/ (:defense player) 100)
+          :fitness (/ (:fitness player) 100)
+          :morale (/ (:morale player) 100)
+          :shots 0
+          :blocked 0
+          :missed 0
+          :goals 0
+          :goals-against 0
+          :blocks 0}))
 
-(defn prepare-players [team]
+(defn prepare-players [match-team team]
   (->> (vals (:players team))
        (filter #(= (:status %) ::player/dressed))
-       (map #(prepare-player team %))
+       (map #(prepare-player match-team team %))
        (util/key-by :id)))
 
-(defn prepare-team [team]
+(defn prepare-team [match-team team]
   (merge team
-         ;; TODO: Should team store :home or :away which would simplify data mapping?
-         {:players (prepare-players team)
+         {:players (prepare-players match-team team)
+          ;; TODO: Utilize :match-team in data mapping
+          :match-team match-team
           :field (first (:fields team))
           :shots 0
           :blocked 0
@@ -295,13 +313,13 @@
           :goals-against 0
           :blocks 0}))
 
-(defn prepare-state [home visitor]
-  {:teams {:home (prepare-team home)
-           :away (prepare-team visitor)}})
+(defn prepare-state [home away]
+  {:teams {:home (prepare-team :home home)
+           :away (prepare-team :away away)}})
 
 ;; Team looked like this:
-(defn simulate-game [home visitor]
-  (let [state (prepare-state home visitor)
+(defn simulate-game [home away]
+  (let [state (prepare-state home away)
         seconds (range 3600)
         foo (reduce #(simulate-second (assoc %1 :seconds %2)) state seconds)]
     foo))
