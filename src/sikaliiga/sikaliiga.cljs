@@ -108,33 +108,15 @@
       (update-in [:teams blocking-team :players blocking-player :blocks] inc)
       (update-in [:teams blocked-team :players blocked-player :blocked] inc)))
 
-(defn add-miss [state player]
-  (update-in state [:teams (:team player) :players (:id player) :missed] inc))
+(defn add-miss [state team player]
+  (update-in state [:teams team :players player :missed] inc))
 
-(defn add-goal [state player]
-  (update-in state [:teams (:team player) :players (:id player) :goals] inc))
-
-(comment (defn simulate-shots [state]
-  (let [home (get-in state [:teams :home])
-        visitor (get-in state [:teams :away])]
-    ;; Shot should be affected by whole field A D
-    (if (not (shot? (:attack home) (:defense visitor)))
-      state
-      ;; Block should be affected by shooter A (?) and opponent field D
-      ;; On the other hand field A determines the quality of the shot
-      (if (blocked? (:attack home) (:defense visitor))
-        ;; Initial idea was to return state and list of events which is still viable:
-        ;; [state [add-shot team] [add-block-against team] [add-block opponent]]
-        ;; Just went with threading to macro to get immediate result
-        ;; Returning list of events allows us to give important meta-data to show full results
-        (-> state (add-shot :home) (add-block-against :home) (add-block :away))
-        ;; Miss should be affected by shooter A
-        (if (missed? (:attack home) (:defense visitor))
-          (-> state (add-shot :home) (add-miss :home))
-          ;; Goal should be affected by shooter A and opponent G
-          (if (goal? (:attack home) (:goalie visitor))
-            (-> state (add-shot :home) (add-goal :home) (add-goal-against :away))
-            (-> state (add-shot :home)))))))))
+;; TODO: assists
+(defn add-goal [state goal-team player goal-against-team goalie]
+  (-> state
+      (update-in [:teams goal-team :players player :goals] inc)
+      (update-in [:teams goal-against-team :players goalie :goals-against] inc)
+      (update :events #(conj % [:goal (:seconds state) goal-team player goal-against-team goalie]))))
 
 ;; Simulating the second should roughly be smth like this:
 ;; shift?
@@ -246,6 +228,15 @@
 (defn get-non-posession-team [state]
   (get-in state [:teams (get-non-posession state)]))
 
+(defn get-goalie [team field]
+  (get-in team [:players (field/get-goalie field)]))
+
+(defn get-blocker [team field]
+  (get-in team [:players (rand-nth (field/get-defenders field))]))
+
+(defn get-shooter [team field]
+  (get-in team [:players (rand-nth (field/get-players field))]))
+
 (defn simulate-shot [state]
   (let [posession (:posession state)
         non-posession (get-non-posession state)
@@ -254,8 +245,17 @@
         field-attack (calculate-field-attack attacking-team (:field attacking-team))
         field-defense (calculate-field-defense defending-team (:field defending-team))]
     (if (shot? field-attack field-defense)
-      (let [shooter-id (rand-nth (field/get-players (:field attacking-team)))]
-        (add-shot state posession shooter-id))
+      (let [shooter (get-shooter attacking-team (:field attacking-team))
+            shot-state (add-shot state posession (:id shooter))
+            blocker (get-blocker defending-team (:field defending-team))
+            goalie (get-goalie defending-team (:field defending-team))]
+        (if (blocked? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team blocker))
+          (add-block shot-state non-posession (:id blocker) posession (:id shooter))
+          (if (missed? (calculate-player-attack attacking-team shooter) field-defense)
+            (add-miss shot-state posession (:id shooter))
+            (if (goal? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team goalie))
+              (add-goal shot-state posession (:id shooter) non-posession (:id goalie))
+              shot-state))))
       state)))
 
 (defn simulate-second [state]
@@ -285,6 +285,7 @@
 
 (defn prepare-team [team]
   (merge team
+         ;; TODO: Should team store :home or :away which would simplify data mapping?
          {:players (prepare-players team)
           :field (first (:fields team))
           :shots 0
