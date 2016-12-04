@@ -60,35 +60,44 @@
     (> (rand (:power-play a)) (+ (rand (* 30 (:goalie b))) (* 15 (:goalie b))))
     (> (rand (:attack a)) (+ (rand (:goalie b)) (/ (:defense b) 3)))))
 
-(def *period-length* (* 20 60))
-(def *game-length* (* 3 *period-length*))
-(def *over-time-length* (* 5 60))
+(def period-length (* 20 60))
+(def game-length (* 3 period-length))
+(def over-time-length (* 5 60))
 
 ;; Following constants are calculated from Liiga season 2015-2016
 ;; NOTE: Multiply by two because we are halfing the probability with the posession mechanism
-(def *mean-shots-per-sec* (* 2 (/ 40 *period-length*)))
+(def mean-shots-per-sec (* 2 (/ 40 period-length)))
 (defn shot?
   ([attack defense rand]
-  (< (rand)
-     (+ (* (- attack defense) *mean-shots-per-sec*) *mean-shots-per-sec*)))
+    (< (rand)
+      (+ (* (- attack defense) mean-shots-per-sec) mean-shots-per-sec)))
   ([attack defense]
     (shot? attack defense rand)))
 
-(def *mean-block-probability* 0.12)
-(defn blocked? [attack defense]
-  (< (rand)
-     (+ (* (- defense attack) *mean-block-probability*) *mean-block-probability*)))
+(def mean-block-probability 0.12)
+(defn blocked?
+  ([attack defense rand]
+    (< (rand)
+       (+ (* (- defense attack) mean-block-probability) mean-block-probability)))
+  ([attack defense]
+    (blocked? attack defense rand)))
 
-(def *mean-miss-probability* 0.34)
-(defn missed? [attack defense]
-  (< (rand)
-     (+ (* (- (* defense 0.5) attack) *mean-miss-probability*) *mean-miss-probability*)))
+(def mean-miss-probability 0.34)
+(defn missed?
+  ([attack defense rand]
+    (< (rand)
+       (+ (* (- (* defense 0.5) attack) mean-miss-probability) mean-miss-probability)))
+  ([attack defense]
+    (missed? attack defense rand)))
 
 ;; TODO: Factor in D to affect shot quality?
-(def *mean-goal-probability* 0.09)
-(defn goal? [attack goalie]
-  (< (rand)
-     (+ (* (- attack goalie) *mean-goal-probability*) *mean-goal-probability*)))
+(def mean-goal-probability 0.09)
+(defn goal?
+  ([attack goalie rand]
+    (< (rand)
+       (+ (* (- attack goalie) mean-goal-probability) mean-goal-probability)))
+  ([attack goalie]
+    (goal? attack goalie rand)))
 
 (defn add-posession [state team-id]
   (assoc state :posession team-id))
@@ -206,7 +215,8 @@
   ;; TODO: In addition to this, face-off should be flagged on previous second
   ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
   ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
-  (<= 0 (.indexOf [0 1200 2400 3600] (:seconds state))))
+  (or (<= 0 (.indexOf [0 1200 2400 3600] (:seconds state)))
+      (:face-off? state)))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
