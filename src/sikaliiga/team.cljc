@@ -1,6 +1,6 @@
 (ns sikaliiga.team
   (:require [clojure.spec :as s]
-            [sikaliiga.util :as util]
+            [sikaliiga.util :refer [make-uuid key-by]]
             [sikaliiga.player :as player]
             [sikaliiga.field :as field]))
 
@@ -35,10 +35,10 @@
                  (player/make-player :position ::player/right-wing :min-skill min-skill :max-skill max-skill)
                  (player/make-player :position ::player/right-wing :min-skill min-skill :max-skill max-skill)]
 
-        team {:id (random-uuid)
+        team {:id (make-uuid)
               :name (str "Test team (" min-skill " - " max-skill ")")
               ;; FIXME: Should players be stored by id?
-              :players (util/key-by :id players)}]
+              :players (key-by :id players)}]
 
     ;; Assign fields automatically
     (assoc team :fields (field/auto-fields team))))

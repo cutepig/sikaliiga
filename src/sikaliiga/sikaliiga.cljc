@@ -67,9 +67,12 @@
 ;; Following constants are calculated from Liiga season 2015-2016
 ;; NOTE: Multiply by two because we are halfing the probability with the posession mechanism
 (def *mean-shots-per-sec* (* 2 (/ 40 *period-length*)))
-(defn shot? [attack defense]
+(defn shot?
+  ([attack defense rand]
   (< (rand)
      (+ (* (- attack defense) *mean-shots-per-sec*) *mean-shots-per-sec*)))
+  ([attack defense]
+    (shot? attack defense rand)))
 
 (def *mean-block-probability* 0.12)
 (defn blocked? [attack defense]
