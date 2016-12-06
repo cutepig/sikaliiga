@@ -60,32 +60,44 @@
     (> (rand (:power-play a)) (+ (rand (* 30 (:goalie b))) (* 15 (:goalie b))))
     (> (rand (:attack a)) (+ (rand (:goalie b)) (/ (:defense b) 3)))))
 
-(def *period-length* (* 20 60))
-(def *game-length* (* 3 *period-length*))
-(def *over-time-length* (* 5 60))
+(def period-length (* 20 60))
+(def game-length (* 3 period-length))
+(def over-time-length (* 5 60))
 
 ;; Following constants are calculated from Liiga season 2015-2016
 ;; NOTE: Multiply by two because we are halfing the probability with the posession mechanism
-(def *mean-shots-per-sec* (* 2 (/ 40 *period-length*)))
-(defn shot? [attack defense]
-  (< (rand)
-     (+ (* (- attack defense) *mean-shots-per-sec*) *mean-shots-per-sec*)))
+(def mean-shots-per-sec (* 2 (/ 40 period-length)))
+(defn shot?
+  ([attack defense rand]
+    (< (rand)
+      (+ (* (- attack defense) mean-shots-per-sec) mean-shots-per-sec)))
+  ([attack defense]
+    (shot? attack defense rand)))
 
-(def *mean-block-probability* 0.12)
-(defn blocked? [attack defense]
-  (< (rand)
-     (+ (* (- defense attack) *mean-block-probability*) *mean-block-probability*)))
+(def mean-block-probability 0.12)
+(defn blocked?
+  ([attack defense rand]
+    (< (rand)
+       (+ (* (- defense attack) mean-block-probability) mean-block-probability)))
+  ([attack defense]
+    (blocked? attack defense rand)))
 
-(def *mean-miss-probability* 0.34)
-(defn missed? [attack defense]
-  (< (rand)
-     (+ (* (- (* defense 0.5) attack) *mean-miss-probability*) *mean-miss-probability*)))
+(def mean-miss-probability 0.34)
+(defn missed?
+  ([attack defense rand]
+    (< (rand)
+       (+ (* (- (* defense 0.5) attack) mean-miss-probability) mean-miss-probability)))
+  ([attack defense]
+    (missed? attack defense rand)))
 
 ;; TODO: Factor in D to affect shot quality?
-(def *mean-goal-probability* 0.09)
-(defn goal? [attack goalie]
-  (< (rand)
-     (+ (* (- attack goalie) *mean-goal-probability*) *mean-goal-probability*)))
+(def mean-goal-probability 0.09)
+(defn goal?
+  ([attack goalie rand]
+    (< (rand)
+       (+ (* (- attack goalie) mean-goal-probability) mean-goal-probability)))
+  ([attack goalie]
+    (goal? attack goalie rand)))
 
 (defn add-posession [state team-id]
   (assoc state :posession team-id))
@@ -157,27 +169,30 @@
   (+ (calculate-player-attack team player)
      (calculate-player-defense team player)))
 
+;; NOTE: One part of PP and SH skills come from the fact that defending team has
+;; one player less than the other and skills are probably biased towards A and D
+;; respectively. We should include PP and SH in calculating posession and shot
+;; probabilities
 (defn calculate-field-attack [team field]
-  ;; TODO: Powerplay
-  ;; FIXME: This should include all field players divided by 5
-  (->> (field/get-forwards field)
+  (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(calculate-player-attack team %))
        (reduce + 0)
-       (#(/ % 3))))
+       (#(/ % 5))))
 
 (defn calculate-field-defense [team field]
-  ;; TODO: Powerplay
-  ;; FIXME: This should include all field players divided by 5
-  (->> (field/get-defenders field)
+  (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(calculate-player-defense team %))
        (reduce + 0)
-       (#(/ % 3))))
+       (#(/ % 5))))
 
 (defn calculate-field-skill [team field]
-  ;; FIXME: This should include all field players divided by 5
-  (+ (calculate-field-defense team field) (calculate-field-attack team field)))
+  (->> (field/get-players field)
+       (map #(get-in team [:players %]))
+       (map #(calculate-player-skill team %))
+       (reduce + 0)
+       (#(/ % 5))))
 
 (defn calculate-field-goalie [team field]
   (or (:defense (get-in team [:players (first field)])) 0))
@@ -193,25 +208,31 @@
   ;; doesn't have the posession is less likely to shift.
   state)
 
-(defn get-center [state match-team]
-  (get-in state [:teams match-team :players (field/get-center (get-in state [:teams :home :field]))]))
+(defn get-center [team field]
+  (get-in team [:players (field/get-center field)]))
 
 (defn face-off? [state]
   ;; TODO: In addition to this, face-off should be flagged on previous second
   ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
   ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
-  (<= 0 (.indexOf [0 1200 2400 3600] (:seconds state))))
+  (or (<= 0 (.indexOf [0 1200 2400 3600] (:seconds state)))
+      (:face-off? state)))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
-  (let [center-a (get-center state :home)
-        center-b (get-center state :away)]
+  (let [team-a (get-in state [:teams :home])
+        team-b (get-in state [:teams :away])
+        center-a (get-center team-a (:field team-a))
+        center-b (get-center team-b (:field team-b))]
     ;; TODO: Should be affected by whole skill of centers, attack + defense
     ;; TODO: If we use a face-off flag from previous second, reset that flag.
-    (if (< (:attack center-a) (rand (+ (:attack center-a) (:attack center-b))))
+    (if (< (calculate-player-skill team-a center-a) (rand (+ (calculate-player-skill team-a center-a) (calculate-player-skill team-b center-b))))
       (add-face-off state :home (:id center-a) :away (:id center-b))
       (add-face-off state :away (:id center-b) :home (:id center-a)))))
 
+;; TODO: One idea I had was that posession should "stick", meaning that the team that has the posession
+;; from last second should have higher probability to maintain the posession.
+;; Also PP and SH should affect the probability for posession
 (defn simulate-posession* [state]
   (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))
         skill-b (calculate-field-skill (get-in state [:teams :away]) (get-in state [:teams :away :field]))]
@@ -246,6 +267,7 @@
 (defn get-blocker [team field]
   (get-in team [:players (rand-nth (field/get-defenders field))]))
 
+;; TODO: Team tactics should affect the shooter (forwards vs defender)
 (defn get-shooter [team field]
   (get-in team [:players (rand-nth (field/get-players field))]))
 
@@ -272,6 +294,8 @@
         shot-state (add-shot state (:match-team attacking-team) (:id shooter))]
     (simulate-block shot-state shooter attacking-team defending-team)))
 
+;; TODO: PP and SH should affect the shot probability.
+;; TODO: Team tactics should affect shot probability
 (defn simulate-shot [state]
   (let [attacking-team (get-in state [:teams (:posession state)])
         defending-team (get-in state [:teams (get-non-posession state)])

@@ -12,3 +12,11 @@
 
 (defn map-values [f coll]
   (into {} (map #(vector (first %) (f (second %))) coll)))
+
+#?(:clj
+  (defn make-uuid []
+    (java.util.UUID/randomUUID))
+  :cljs
+  (defn make-uuid []
+    (random-uuid)))
+

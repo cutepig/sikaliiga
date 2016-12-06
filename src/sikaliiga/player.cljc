@@ -1,6 +1,6 @@
 (ns sikaliiga.player
   (:require [clojure.spec :as s]
-            [sikaliiga.util :refer [rnd irnd]]))
+            [sikaliiga.util :refer [make-uuid rnd irnd]]))
 
 ;; Spec
 (s/def ::id uuid?)
@@ -62,6 +62,7 @@
 (defn defender? [player] (defense-position? (:position player)))
 (defn forward? [player] (forward-position? (:position player)))
 
+
 ;; TODO: Salary, contract, fitness, motivation, character/charisma, leadership
 (defn make-player
   [& {:keys [locale position min-skill max-skill] :or {locale :fi}}]
@@ -73,7 +74,7 @@
         [defense defense-potential] (if (defense-or-goalie-position? position)
                                      [(irnd min-skill max-skill) (irnd min-skill 100)]
                                      [(irnd 1 max-skill) (irnd 1 max-skill)])]
-    {:id (random-uuid)
+    {:id (make-uuid)
      :age (irnd 18 35)
      :name (random-name :locale locale)
      :locale locale
