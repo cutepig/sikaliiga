@@ -20,3 +20,5 @@
   (defn make-uuid []
     (random-uuid)))
 
+(defn period-start? [seconds]
+  (<= 0 (.indexOf [0 1200 2400 3600] seconds)))

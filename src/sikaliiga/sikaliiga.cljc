@@ -215,7 +215,7 @@
   ;; TODO: In addition to this, face-off should be flagged on previous second
   ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
   ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
-  (or (<= 0 (.indexOf [0 1200 2400 3600] (:seconds state)))
+  (or (util/period-start? (:seconds state))
       (:face-off? state)))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator

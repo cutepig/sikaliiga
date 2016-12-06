@@ -49,3 +49,4 @@
 
   (it "returns false when :face-off? is not set in state"
       (should-not (sikaliiga/face-off? {:face-off? false}))))
+

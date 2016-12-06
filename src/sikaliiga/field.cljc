@@ -1,5 +1,6 @@
 (ns sikaliiga.field
   (:require [clojure.spec :as s]
+            [sikaliiga.util :as util]
             [sikaliiga.player :as player]))
 
 (s/def ::index integer?)
@@ -77,11 +78,37 @@
   ;; Null goalie and return
   [team (assoc-in field-out [:players 0] nil)])
 
-(defn shift-forwards? [secs field]
-  (>= secs (:next-shift-forwards field)))
+(defn power-play-forwards? [team]
+  (let [field-index (:current-field-forwards team)]
+    (or (= 4 field-index) (= 5 field-index))))
 
-(defn shift-defenders? [secs field]
-  (>= secs (:next-shift-defenders field)))
+(defn power-play-defenders? [team]
+  (let [field-index (:current-field-defenders team)]
+    (or (= 3 field-index) (= 4 field-index))))
+
+(defn short-handed-forwards? [team]
+  (let [field-index (:current-field-forwards team)]
+    (or (= 6 field-index) (= 7 field-index))))
+
+(defn short-handed-defenders? [team]
+  (let [field-index (:current-field-defenders team)]
+    (or (= 5 field-index) (= 6 field-index))))
+
+(defn shift-forwards? [state team]
+  (or (util/period-start? (:seconds state))
+      (>= (:seconds state) (:next-shift-forwards team))
+      (and (:power-play? team) (not (power-play-forwards? team)))
+      (and (:short-handed? team) (not (short-handed-forwards? team)))
+      (and (not (:power-play? team)) (power-play-forwards? team))
+      (and (not (:short-handed? team)) (short-handed-forwards? team))))
+
+(defn shift-defenders? [state team]
+  (or (util/period-start? (:seconds state))
+      (>= (:seconds state) (:next-shift-defenders team))
+      (and (:power-play? team) (not (power-play-defenders? team)))
+      (and (:short-handed? team) (not (short-handed-defenders? team)))
+      (and (not (:power-play? team)) (power-play-defenders? team))
+      (and (not (:short-handed? team)) (short-handed-defenders? team))))
 
 (defn auto-field-nth [goalies defenders forwards n]
   [(:id (first goalies))
