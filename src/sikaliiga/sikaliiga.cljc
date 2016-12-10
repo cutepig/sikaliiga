@@ -66,7 +66,7 @@
 
 ;; Following constants are calculated from Liiga season 2015-2016
 ;; NOTE: Multiply by two because we are halfing the probability with the posession mechanism
-(def mean-shots-per-sec (* 2 (/ 40 period-length)))
+(def mean-shots-per-sec (* 2 (/ 40 game-length)))
 (defn shot?
   ([attack defense rand]
     (< (rand)
@@ -134,6 +134,7 @@
 ;; TODO: assists
 (defn add-goal [state goal-team player goal-against-team goalie]
   (-> state
+      (add-sog goal-team player goal-against-team goalie)
       (update-in [:teams goal-team :players player :goals] inc)
       ;; FIXME: goalie might be nil, this might effect stats calculation
       (update-in [:teams goal-against-team :players goalie :goals-against] inc)
@@ -156,19 +157,6 @@
 ;;   goal?
 ;; Part of these has to be done inline without external reducer
 
-(defn calculate-player-attack [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and motivation
-  (:attack player))
-
-(defn calculate-player-defense [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and motivation
-  (:defense player))
-
-(defn calculate-player-skill [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and motivation
-  (+ (calculate-player-attack team player)
-     (calculate-player-defense team player)))
-
 ;; NOTE: One part of PP and SH skills come from the fact that defending team has
 ;; one player less than the other and skills are probably biased towards A and D
 ;; respectively. We should include PP and SH in calculating posession and shot
@@ -176,21 +164,21 @@
 (defn calculate-field-attack [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
-       (map #(calculate-player-attack team %))
+       (map #(player/calculate-match-attack team %))
        (reduce + 0)
        (#(/ % 5))))
 
 (defn calculate-field-defense [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
-       (map #(calculate-player-defense team %))
+       (map #(player/calculate-match-defense team %))
        (reduce + 0)
        (#(/ % 5))))
 
 (defn calculate-field-skill [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
-       (map #(calculate-player-skill team %))
+       (map #(player/calculate-match-skill team %))
        (reduce + 0)
        (#(/ % 5))))
 
@@ -226,7 +214,7 @@
         center-b (get-center team-b (:field team-b))]
     ;; TODO: Should be affected by whole skill of centers, attack + defense
     ;; TODO: If we use a face-off flag from previous second, reset that flag.
-    (if (< (calculate-player-skill team-a center-a) (rand (+ (calculate-player-skill team-a center-a) (calculate-player-skill team-b center-b))))
+    (if (< (player/calculate-match-skill team-a center-a) (rand (+ (player/calculate-match-skill team-a center-a) (player/calculate-match-skill team-b center-b))))
       (add-face-off state :home (:id center-a) :away (:id center-b))
       (add-face-off state :away (:id center-b) :home (:id center-a)))))
 
@@ -273,19 +261,19 @@
 
 (defn simulate-goal [state shooter attacking-team defending-team]
   (let [goalie (get-goalie defending-team (:field defending-team))]
-    (if (goal? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team goalie))
+    (if (goal? (player/calculate-match-attack attacking-team shooter) (player/calculate-match-defense defending-team goalie))
         (add-goal state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie))
         (add-sog state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie)))))
 
 (defn simulate-miss [state shooter attacking-team defending-team]
   (let [defense (calculate-field-defense defending-team (:field defending-team))]
-    (if (missed? (calculate-player-attack attacking-team shooter) defense)
+    (if (missed? (player/calculate-match-attack attacking-team shooter) defense)
         (add-miss state (:match-team attacking-team) (:id shooter))
         (simulate-goal state shooter attacking-team defending-team))))
 
 (defn simulate-block [state shooter attacking-team defending-team]
   (let [blocker (get-blocker defending-team (:field defending-team))]
-    (if (blocked? (calculate-player-attack attacking-team shooter) (calculate-player-defense defending-team blocker))
+    (if (blocked? (player/calculate-match-attack attacking-team shooter) (player/calculate-match-defense defending-team blocker))
         (add-block state (:match-team defending-team) (:id blocker) (:match-team attacking-team) (:id shooter))
         (simulate-miss state shooter attacking-team defending-team))))
 
@@ -311,15 +299,25 @@
       simulate-extras
       simulate-shot))
 
+(defn prepare-player-attack [team player]
+  (+ (:attack player)
+     (rand (* (- (:attack-potential player) (:attack player))
+              (* 0.5 (+ (:morale player) (:fitness player)))))))
+
+(defn prepare-player-defense [team player]
+  (+ (:defense player)
+     (rand (* (- (:defense-potential player) (:defense player))
+              (* 0.5 (+ (:morale player) (:fitness player)))))))
+
 (defn prepare-player [match-team team player]
   (merge player
          {:team (:id team)
           ;; TODO: Utilize :match-team in data mapping
           :match-team match-team
-          :attack (/ (:attack player) 100)
-          :defense (/ (:defense player) 100)
-          :fitness (/ (:fitness player) 100)
-          :morale (/ (:morale player) 100)
+          :attack (prepare-player-attack team player)
+          :defense (prepare-player-defense team player)
+          :fitness (:fitness player)
+          :morale (:morale player)
           :shots 0
           :blocked 0
           :missed 0

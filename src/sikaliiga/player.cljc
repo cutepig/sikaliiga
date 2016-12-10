@@ -45,6 +45,18 @@
        ", "
        (rand-nth (get-in names-dict [locale :first-names]))))
 
+(defn calculate-match-attack [team player]
+  ;; FIXME: Proper mapping including team attributes, personal fitness and morale
+  (* (:attack player) (* 0.5 (+ (:morale player) (:fitness player)))))
+
+(defn calculate-match-defense [team player]
+  ;; FIXME: Proper mapping including team attributes, personal fitness and morale
+  (* (:defense player) (* 0.5 (+ (:morale player) (:fitness player)))))
+
+(defn calculate-match-skill [team player]
+  ;; FIXME: Proper mapping including team attributes, personal fitness and morale
+  (+ (calculate-match-attack team player)
+     (calculate-match-defense team player)))
 
 (defn forward-position? [pos]
   (contains? #{::left-wing ::center ::right-wing} pos))
@@ -62,18 +74,20 @@
 (defn defender? [player] (defense-position? (:position player)))
 (defn forward? [player] (forward-position? (:position player)))
 
-
-;; TODO: Salary, contract, fitness, motivation, character/charisma, leadership
+;; TODO: Salary, contract, fitness, morale, character/charisma, leadership
 (defn make-player
   [& {:keys [locale position min-skill max-skill] :or {locale :fi}}]
   ;; Calculating potential this way ain't gonna cut it.. While the idea of lower potential than current skill
   ;; is nice, this can generate some wild differences specially in non-position skill
-  (let [[attack attack-potential] (if (forward-position? position)
-                                    [(irnd min-skill max-skill) (irnd min-skill 100)]
-                                    [(irnd 1 max-skill) (irnd 1 max-skill)])
+  (let [min-skill* (/ min-skill 100)
+        max-skill* (/ max-skill 100)
+        other-skill (rnd 0.01 max-skill*)
+        [attack attack-potential] (if (forward-position? position)
+                                    [(rnd min-skill* max-skill*) (rnd min-skill* 1)]
+                                    [other-skill (rnd other-skill max-skill*)])
         [defense defense-potential] (if (defense-or-goalie-position? position)
-                                     [(irnd min-skill max-skill) (irnd min-skill 100)]
-                                     [(irnd 1 max-skill) (irnd 1 max-skill)])]
+                                      [(rnd min-skill* max-skill*) (rnd min-skill* 1)]
+                                      [other-skill (rnd other-skill max-skill*)])]
     {:id (make-uuid)
      :age (irnd 18 35)
      :name (random-name :locale locale)
@@ -83,6 +97,6 @@
      :attack-potential attack-potential
      :defense defense
      :defense-potential defense-potential
-     :fitness 100
-     :morale 100
+     :fitness 1
+     :morale 1
      :status ::dressed}))

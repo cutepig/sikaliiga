@@ -7,28 +7,28 @@
   (it "returns true when rand is less than attack"
       (should (sikaliiga/shot? 1.0 1.0 (constantly 0.0))))
   (it "returns false when rand is more than attack"
-      (should-not (sikaliiga/shot? 1.0 1.0 (constantly 2.0)))))
+      (should-not (sikaliiga/shot? 1.0 1.0 (constantly 1.0)))))
 
 (describe
   "blocked?"
   (it "returns true when rand is less than defense"
       (should (sikaliiga/blocked? 1.0 1.0 (constantly 0.0))))
   (it "returns false when rand is more than defense"
-      (should-not (sikaliiga/blocked? 1.0 1.0 (constantly 2.0)))))
+      (should-not (sikaliiga/blocked? 1.0 1.0 (constantly 1.0)))))
 
 (describe
   "missed?"
   (it "returns true when rand is less than defense"
       (should (sikaliiga/missed? 1.0 1.0 (constantly 0.0))))
   (it "returns false when rand is more than defense"
-      (should-not (sikaliiga/missed? 1.0 1.0 (constantly 2.0)))))
+      (should-not (sikaliiga/missed? 1.0 1.0 (constantly 1.0)))))
 
 (describe
   "goal?"
   (it "returns true when rand is less than attack"
       (should (sikaliiga/goal? 1.0 1.0 (constantly 0.0))))
   (it "returns false when rand is more than attack"
-      (should-not (sikaliiga/goal? 1.0 1.0 (constantly 2.0)))))
+      (should-not (sikaliiga/goal? 1.0 1.0 (constantly 1.0)))))
 
 (describe
   "face-off?"
