@@ -46,7 +46,8 @@
     :else (first field)))
 
 (defn get-position-by-index [index]
-  (nth [::player/goalie ::player/defense ::player/defense ::player/left-wing ::player/center ::player/right-wing] index))
+  ;; FIXME: That pesky `::player/extra-attacker` is probably not the correct value to put here
+  (nth [::player/goalie ::player/defense ::player/defense ::player/left-wing ::player/center ::player/right-wing ::player/extra-attacker] index))
 
 ;; `field-out` prepared field consisting of actual players instead of id's.
 ;; Map `field-out` stats from `team` back to `new-team`.
@@ -134,6 +135,7 @@
             :else [best best-value])))
 
 (defn pick-substitute [candidates position team]
+  (println "pick-substitute" candidates position)
   (->> candidates
     (reduce #(compare-substitute %1 %2 position team) nil)
     first
@@ -144,14 +146,23 @@
                     (not-any? #(= % (:id candidate)) excluded))]
     (filter #(and (excluded? %) (player/dressed? %)) candidates)))
 
-(defn pick-player-for-position [team field idx]
-  (let [position (get-position-by-index idx)
-        id (get-player-by-index field idx)
-        player (get-in team [:players id])]
+(defn pick-player-for-position [id field team position]
+  (let [player (get-in team [:players id])]
+    (println "pick-player-for-position" id player)
     (if (= (:status player) ::player/dressed)
       id
-      (let [candidates (collect-substitute-candidates (vals (:players team)) (flatten field))]
+      (let [candidates (collect-substitute-candidates (vals (:players team)) field)]
         (pick-substitute candidates position team)))))
+
+(defn pick-forwards-for-field [team field]
+  (reduce #(assoc %1 %2 (pick-player-for-position (nth %1 %2) %1 team (get-position-by-index (+ 3 %2))))
+    field
+    (range (count field))))
+
+(defn pick-defenders-for-field [team field]
+  (reduce #(assoc %1 %2 (pick-player-for-position (nth %1 %2) %1 team (get-position-by-index (inc %2))))
+    field
+    (range (count field))))
 
 (defn auto-field-nth [goalies defenders left-wings centers right-wings n]
   [(:id (first goalies))

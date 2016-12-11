@@ -25,10 +25,9 @@
     (it "returns the correct right-wing"
         (should= :right-wing (field/get-player-by-index field 5)))
 
-    ;; OK returning empty it or wrapping it in comment breaks the tests
     ;; TODO:
-    ;;(it "returns the correct extra attacker")
-    ))
+    (it "returns the correct extra attacker"
+        (pending "TODO"))))
 
 (describe
   "shift-forwards?"
@@ -173,21 +172,21 @@
   (it "returns the original player when that player is dressed"
       (let [original {:id #uuid "ec4d818c-cb7c-45ef-944a-009c1d6709ab" :status ::player/dressed}
             team {:players (util/key-by :id [original])}
-            field [nil nil [(:id original)]]]
-        (should= (:id original) (field/pick-player-for-position team field 3))))
+            field [(:id original)]]
+        (should= (:id original) (field/pick-player-for-position (:id original) field team ::player/left-wing))))
 
   (it "doesn't return the original player when that player is not dressed"
       (let [original {:id #uuid "ec4d818c-cb7c-45ef-944a-009c1d6709ab" :status ::player/injured}
             team {:players (util/key-by :id [original])}
-            field [nil nil [(:id original) nil nil]]]
-        (should-not (field/pick-player-for-position team field 3))))
+            field [(:id original) nil nil]]
+        (should-not (field/pick-player-for-position (:id original) field team ::player/left-wing))))
 
   (it "returns a given alternative when the original player is not dressed"
       (let [original {:id #uuid "ec4d818c-cb7c-45ef-944a-009c1d6709ab" :status ::player/injured}
             alternative (make-test-player #uuid "a0acd128-61c2-479f-aede-6dc154a31a9d" 1.0 1.0 ::player/center ::player/dressed)
             team {:players (util/key-by :id [original alternative])}
-            field [nil nil [(:id original) nil nil]]]
-        (should= (:id alternative) (field/pick-player-for-position team field 4))))
+            field [(:id original) nil nil]]
+        (should= (:id alternative) (field/pick-player-for-position (:id original) field team ::player/left-wing))))
 
   (it "returns most viable alternative when the original player is not dressed"
       (let [original {:id #uuid "ec4d818c-cb7c-45ef-944a-009c1d6709ab" :status ::player/injured}
@@ -195,5 +194,39 @@
             lesser (make-test-player #uuid "a0acd128-61c2-479f-aede-6dc154a31a9d" 0.5 0.5 ::player/center ::player/dressed)
             best-injured (make-test-player #uuid "a0acd128-61c2-479f-aede-6dc154a31a9d" 1.0 1.0 ::player/center ::player/injured)
             team {:players (util/key-by :id [original best lesser best-injured])}
-            field [nil nil [(:id original) nil nil]]]
-        (should= (:id best) (field/pick-player-for-position team field 4)))))
+            field [(:id original) nil nil]]
+        (should= (:id best) (field/pick-player-for-position (:id original) field team ::player/left-wing)))))
+
+(describe
+  "pick-forwards-for-field"
+  (it "returns original field when all players on it are dressed"
+      (let [left-wing (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/left-wing ::player/dressed)
+            center (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/center ::player/dressed)
+            right-wing (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/right-wing ::player/dressed)
+            team {:players (util/key-by :id [left-wing center right-wing])}
+            field [(:id left-wing) (:id center) (:id right-wing)]]
+        (should= field (field/pick-forwards-for-field team field))))
+
+  (it "returns field of nils when none of the players on it are dressed"
+      (let [left-wing (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/left-wing ::player/injured)
+            center (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/center ::player/injured)
+            right-wing (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/right-wing ::player/injured)
+            team {:players (util/key-by :id [left-wing center right-wing])}
+            field [(:id left-wing) (:id center) (:id right-wing)]]
+        (should= [nil nil nil] (field/pick-forwards-for-field team field)))))
+
+(describe
+  "pick-defenders-for-field"
+  (it "returns original field when all players on it are dressed"
+      (let [defender-1 (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/defense ::player/dressed)
+            defender-2 (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/defense ::player/dressed)
+            team {:players (util/key-by :id [defender-1 defender-2])}
+            field [(:id defender-1) (:id defender-2)]]
+        (should= field (field/pick-defenders-for-field team field))))
+
+  (it "returns field of nils when none of the players on it are dressed"
+      (let [defender-1 (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/defense ::player/injured)
+            defender-2 (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/defense ::player/injured)
+            team {:players (util/key-by :id [defender-1 defender-2])}
+            field [(:id defender-1) (:id defender-2)]]
+        (should= [nil nil] (field/pick-defenders-for-field team field)))))
