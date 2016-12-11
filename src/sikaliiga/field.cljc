@@ -155,6 +155,8 @@
         (pick-substitute candidates position team)))))
 
 (defn pick-forwards-for-field [team field]
+  ;; FIXME: This eagerly picks a substitute for left-wing that might be better suitable as center
+  ;; if the original center is not dressed and requires a substitute too
   (reduce #(assoc %1 %2 (pick-player-for-position (nth %1 %2) %1 team (get-position-by-index (+ 3 %2))))
     field
     (range (count field))))
@@ -163,6 +165,12 @@
   (reduce #(assoc %1 %2 (pick-player-for-position (nth %1 %2) %1 team (get-position-by-index (inc %2))))
     field
     (range (count field))))
+
+(defn shift-forwards [state team]
+  (comment "TODO"))
+
+(defn shift-defenders [state team]
+  (comment "TODO"))
 
 (defn auto-field-nth [goalies defenders left-wings centers right-wings n]
   [(:id (first goalies))

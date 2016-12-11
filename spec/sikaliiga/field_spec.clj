@@ -213,7 +213,13 @@
             right-wing (make-test-player #uuid "3838a7c8-67c8-4ee1-8587-a6f531cf19d5" 1 1 ::player/right-wing ::player/injured)
             team {:players (util/key-by :id [left-wing center right-wing])}
             field [(:id left-wing) (:id center) (:id right-wing)]]
-        (should= [nil nil nil] (field/pick-forwards-for-field team field)))))
+        (should= [nil nil nil] (field/pick-forwards-for-field team field))))
+
+  (it "returns original field with extra attacker when all players on it are dressed"
+      (pending "TODO"))
+
+  (it "returns original short-handed field when all players on it are dressed"
+      (pending "TODO")))
 
 (describe
   "pick-defenders-for-field"
@@ -230,3 +236,13 @@
             team {:players (util/key-by :id [defender-1 defender-2])}
             field [(:id defender-1) (:id defender-2)]]
         (should= [nil nil] (field/pick-defenders-for-field team field)))))
+
+(describe
+  "shift-forwards"
+  (it "TODO"
+      (pending "TODO")))
+
+(describe
+  "shift-defenders"
+  (it "TODO"
+      (pending "TODO")))
