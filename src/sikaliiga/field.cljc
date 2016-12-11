@@ -39,6 +39,15 @@
 (defn get-extra-forward [field]
   (nth (get-forwards field) 3))
 
+(defn get-player-by-index [field index]
+  (cond
+    (> index 2) (nth (nth field 2) (- index 3))
+    (> index 0) (nth (second field) (dec index))
+    :else (first field)))
+
+(defn get-position-by-index [index]
+  (nth [::player/goalie ::player/defense ::player/defense ::player/left-wing ::player/center ::player/right-wing] index))
+
 ;; `field-out` prepared field consisting of actual players instead of id's.
 ;; Map `field-out` stats from `team` back to `new-team`.
 ;; Prepare `field-in` consisting of actual players instead of id's
@@ -117,18 +126,32 @@
     :else (player/calculate-match-defense team substitute)))
 
 (defn compare-substitute
-  [[best best-value] candidate position team exclude]
+  [[best best-value] candidate position team]
     (let [candidate-value (calculate-substitute-value candidate position team)]
        (cond
             (nil? best) [candidate candidate-value]
-            (some #(= % (:id candidate)) exclude) [best best-value]
             (> (or candidate-value 0) (or best-value 0)) [candidate candidate-value]
             :else [best best-value])))
+
+(defn pick-substitute [candidates position team]
+  (->> candidates
+    (reduce #(compare-substitute %1 %2 position team) nil)
+    first
+    :id))
 
 (defn collect-substitute-candidates [candidates excluded]
   (let [excluded? (fn excluded? [candidate]
                     (not-any? #(= % (:id candidate)) excluded))]
     (filter #(and (excluded? %) (player/dressed? %)) candidates)))
+
+(defn pick-player-for-position [team field idx]
+  (let [position (get-position-by-index idx)
+        id (get-player-by-index field idx)
+        player (get-in team [:players id])]
+    (if (= (:status player) ::player/dressed)
+      id
+      (let [candidates (collect-substitute-candidates (vals (:players team)) (flatten field))]
+        (pick-substitute candidates position team)))))
 
 (defn auto-field-nth [goalies defenders left-wings centers right-wings n]
   [(:id (first goalies))
