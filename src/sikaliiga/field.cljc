@@ -125,6 +125,11 @@
             (> (or candidate-value 0) (or best-value 0)) [candidate candidate-value]
             :else [best best-value])))
 
+(defn collect-substitute-candidates [candidates excluded]
+  (let [excluded? (fn excluded? [candidate]
+                    (not-any? #(= % (:id candidate)) excluded))]
+    (filter #(and (excluded? %) (player/dressed? %)) candidates)))
+
 (defn auto-field-nth [goalies defenders left-wings centers right-wings n]
   [(:id (first goalies))
    (map :id (take 2 (drop (* 2 n) defenders)))
