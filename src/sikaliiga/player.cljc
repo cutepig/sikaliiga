@@ -55,8 +55,17 @@
 
 (defn calculate-match-skill [team player]
   ;; FIXME: Proper mapping including team attributes, personal fitness and morale
-  (+ (calculate-match-attack team player)
-     (calculate-match-defense team player)))
+  (* 0.5 (+ (calculate-match-attack team player)
+            (calculate-match-defense team player))))
+
+(defn left-wing-position? [pos]
+  (= pos ::left-wing))
+
+(defn center-position? [pos]
+  (= pos ::center))
+
+(defn right-wing-position? [pos]
+  (= pos ::right-wing))
 
 (defn forward-position? [pos]
   (contains? #{::left-wing ::center ::right-wing} pos))
@@ -73,6 +82,15 @@
 (defn goalie? [player] (goalie-position? (:position player)))
 (defn defender? [player] (defense-position? (:position player)))
 (defn forward? [player] (forward-position? (:position player)))
+(defn left-wing? [player] (left-wing-position? (:position player)))
+(defn center? [player] (center-position? (:position player)))
+(defn right-wing? [player] (right-wing-position? (:position player)))
+
+(defn dressed? [player] (= ::dressed (:status player)))
+(defn injured? [player] (= ::injured (:status player)))
+(defn penalty? [player] (= ::penalty (:status player)))
+(defn bench? [player] (= ::bench (:status player)))
+(defn match-penalty? [player] (= ::match-penalty (:status player)))
 
 ;; TODO: Salary, contract, fitness, morale, character/charisma, leadership
 (defn make-player

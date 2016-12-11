@@ -337,6 +337,8 @@
           ;; TODO: Utilize :match-team in data mapping
           :match-team match-team
           :field (first (:fields team))
+          :current-field-forwards 0
+          :current-field-defenders 0
           :shots 0
           :blocked 0
           :missed 0

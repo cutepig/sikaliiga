@@ -96,7 +96,7 @@
 
 (defn shift-forwards? [state team]
   (or (util/period-start? (:seconds state))
-      (>= (:seconds state) (:next-shift-forwards team))
+      (>= (:seconds state) (or (:next-shift-forwards team) 0))
       (and (:power-play? team) (not (power-play-forwards? team)))
       (and (:short-handed? team) (not (short-handed-forwards? team)))
       (and (not (:power-play? team)) (power-play-forwards? team))
@@ -104,24 +104,41 @@
 
 (defn shift-defenders? [state team]
   (or (util/period-start? (:seconds state))
-      (>= (:seconds state) (:next-shift-defenders team))
+      (>= (:seconds state) (or (:next-shift-defenders team) 0))
       (and (:power-play? team) (not (power-play-defenders? team)))
       (and (:short-handed? team) (not (short-handed-defenders? team)))
       (and (not (:power-play? team)) (power-play-defenders? team))
       (and (not (:short-handed? team)) (short-handed-defenders? team))))
 
-(defn auto-field-nth [goalies defenders forwards n]
+(defn calculate-substitute-value [substitute position team]
+  (cond
+    (= position ::player/center) (player/calculate-match-skill team substitute)
+    (player/forward-position? position) (player/calculate-match-attack team substitute)
+    :else (player/calculate-match-defense team substitute)))
+
+(defn compare-substitute
+  [[best best-value] candidate position team exclude]
+    (let [candidate-value (calculate-substitute-value candidate position team)]
+       (cond
+            (nil? best) [candidate candidate-value]
+            (some #(= % (:id candidate)) exclude) [best best-value]
+            (> (or candidate-value 0) (or best-value 0)) [candidate candidate-value]
+            :else [best best-value])))
+
+(defn auto-field-nth [goalies defenders left-wings centers right-wings n]
   [(:id (first goalies))
    (map :id (take 2 (drop (* 2 n) defenders)))
-   (map :id (take 3 (drop (* 3 n) forwards)))])
+   [(:id (nth left-wings n)) (:id (nth centers n)) (:id (nth right-wings n))]])
 
 (defn auto-fields [team]
   (let [players (vals (:players team))
         goalies (->> players (filter player/goalie?) (sort-by :defense) reverse)
         defenders (->> players (filter player/defender?) (sort-by :defense) reverse)
-        forwards (->> players (filter player/forward?) (sort-by :attack) reverse)]
+        left-wings (->> players (filter player/left-wing?) (sort-by :attack) reverse)
+        centers (->> players (filter player/center?) (sort-by :attack) reverse)
+        right-wings (->> players (filter player/right-wing?) (sort-by :attack) reverse)]
     ;; FIXME: Handle left-, right-wings and center correctly
-    [{:index 0 :shift-forwards 40 :shift-defenders 50 :players (auto-field-nth goalies defenders forwards 0)}
-     {:index 1 :shift-forwards 30 :shift-defenders 40 :players (auto-field-nth goalies defenders forwards 1)}
-     {:index 2 :shift-forwards 20 :shift-defenders 30 :players (auto-field-nth goalies defenders forwards 2)}
-     {:index 3 :shift-forwards 20 :players (auto-field-nth goalies defenders forwards 3)}]))
+    [{:index 0 :shift-forwards 40 :shift-defenders 50 :players (auto-field-nth goalies defenders left-wings centers right-wings 0)}
+     {:index 1 :shift-forwards 30 :shift-defenders 40 :players (auto-field-nth goalies defenders left-wings centers right-wings 1)}
+     {:index 2 :shift-forwards 20 :shift-defenders 30 :players (auto-field-nth goalies defenders left-wings centers right-wings 2)}
+     {:index 3 :shift-forwards 20 :players (auto-field-nth goalies defenders left-wings centers right-wings 3)}]))
