@@ -45,21 +45,6 @@
 ;;
 ;; Simulation functions
 
-(defn power-play? [] (= 0 (rand-int 5)))
-
-;; NOTE: This old version had power-play affecting the situation
-;; TODO: Port this back to the new version
-;; TODO: Also add in short-handed
-(defn -shot? [a b power-play?]
-  (if power-play?
-    (> (rand (:power-play a)) (rand (:short-handed b)))
-    (> (rand (:attack a)) (rand (:defense b)))))
-
-(defn -goal? [a b power-play?]
-  (if power-play?
-    (> (rand (:power-play a)) (+ (rand (* 30 (:goalie b))) (* 15 (:goalie b))))
-    (> (rand (:attack a)) (+ (rand (:goalie b)) (/ (:defense b) 3)))))
-
 (def period-length (* 20 60))
 (def game-length (* 3 period-length))
 (def over-time-length (* 5 60))
@@ -156,6 +141,87 @@
 ;;   missed?
 ;;   goal?
 ;; Part of these has to be done inline without external reducer
+
+(defn power-play? [state team]
+  ;; FIXME: We may have to be calculating penalt boxes for both teams
+  ;; in order to know what is the real state, 5-4, 5-3, 4-3, 4-4, 3-3
+  (:power-play? team))
+
+(defn short-handed [state team]
+  ;; FIXME: We may have to be calculating penalt boxes for both teams
+  ;; in order to know what is the real state, 5-4, 5-3, 4-3, 4-4, 3-3
+  (:short-handed? team))
+
+(defn power-play-forwards? [team]
+  (let [field-index (:current-field-forwards team)]
+    (or (= 4 field-index) (= 5 field-index))))
+
+(defn power-play-defenders? [team]
+  (let [field-index (:current-field-defenders team)]
+    (or (= 3 field-index) (= 4 field-index))))
+
+(defn short-handed-forwards? [team]
+  (let [field-index (:current-field-forwards team)]
+    (or (= 6 field-index) (= 7 field-index))))
+
+(defn short-handed-defenders? [team]
+  (let [field-index (:current-field-defenders team)]
+    (or (= 5 field-index) (= 6 field-index))))
+
+;; FIXME: We may not even need this predicate, we can map this directly to field change
+(defn shift-forwards? [state team]
+  (or (util/period-start? (:seconds state))
+      ;; no posession - should stop here
+      (>= (:seconds state) (or (:next-shift-forwards team) 0))
+      (and (:power-play? team) (not (power-play-forwards? team)))
+      (and (:short-handed? team) (not (short-handed-forwards? team)))
+      (and (not (:power-play? team)) (power-play-forwards? team))
+      (and (not (:short-handed? team)) (short-handed-forwards? team))))
+
+(defn shift-defenders? [state team]
+  (or (util/period-start? (:seconds state))
+      ;; no posession - should stop here
+      (>= (:seconds state) (or (:next-shift-defenders team) 0))
+      (and (:power-play? team) (not (power-play-defenders? team)))
+      (and (:short-handed? team) (not (short-handed-defenders? team)))
+      (and (not (:power-play? team)) (power-play-defenders? team))
+      (and (not (:short-handed? team)) (short-handed-defenders? team))))
+
+(defn shift-forwards* [state team idx]
+  (let [match-team (:match-team team)
+        old-field (field/get-forwards (:field team))   ;; We can use this since the field isn't shifted yet
+        field (get-in team [:fields :forwards idx])]
+    (-> state
+        ;; TODO: Reset on-ice? for players in old field and set it for the new field
+        (assoc-in [:teams match-team :field 2] (field/pick-forwards-for-field team (:players field)))
+        (assoc-in [:teams match-team :current-field-forwards] idx)
+        (assoc-in [:teams match-team :next-shift-forwards] (+ (:seconds state) (:shift-length field))))))
+
+(defn clamp-to-range
+  "clamp n so that min <= n <= max"
+  [n min max]
+  (+ min (mod (- n min) (- (inc max) min))))
+
+(defn shift-forwards [state team]
+  (cond
+    ;; Always force shift to first field on period starts
+    (util/period-start? (:seconds state))
+      (shift-forwards* state team 0)
+    ;; Never do shift is the team doesn't have posession
+    ;; FIXME: Do some probability based rand here
+    (not= (:posession state) (:match-team team))
+      state
+    ;; See if the time for current shift is past due
+    (>= (:seconds state) (or (:next-shift-forwards team) 0))
+      (let [next-raw-idx (inc (:current-field-forwards team))
+            ;; Choose the clamp range for next calculated field index
+            next-idx (cond (:power-play? team) (clamp-to-range next-raw-idx 4 5)
+                           (:short-handed? team) (clamp-to-range next-raw-idx 6 7)
+                           :else (clamp-to-range next-raw-idx 0 3))]
+        (shift-forwards* state team next-idx))))
+
+(defn shift-defenders [state team]
+  (comment "TODO"))
 
 ;; NOTE: One part of PP and SH skills come from the fact that defending team has
 ;; one player less than the other and skills are probably biased towards A and D
@@ -295,16 +361,22 @@
 
 (defn simulate-second [state]
   (-> state
+      ;; TODO: simulate-penalty-releases
+      ;; simulate-shifts
       simulate-posession
       simulate-extras
       simulate-shot))
 
 (defn prepare-player-attack [team player]
+  ;; TODO: Add potential home boost to attributes if (= :home (:match-team team))
+  ;; TODO: Add potential away minus to attributes if (= :away (:match-team team))
   (+ (:attack player)
      (rand (* (- (:attack-potential player) (:attack player))
               (* 0.5 (+ (:morale player) (:fitness player)))))))
 
 (defn prepare-player-defense [team player]
+  ;; TODO: Add potential home boost to attributes if (= :home (:match-team team))
+  ;; TODO: Add potential away minus to attributes if (= :away (:match-team team))
   (+ (:defense player)
      (rand (* (- (:defense-potential player) (:defense player))
               (* 0.5 (+ (:morale player) (:fitness player)))))))
@@ -318,6 +390,8 @@
           :defense (prepare-player-defense team player)
           :fitness (:fitness player)
           :morale (:morale player)
+          :on-ice? false
+          :toc 0
           :shots 0
           :blocked 0
           :missed 0
@@ -334,11 +408,19 @@
 (defn prepare-team [match-team team]
   (merge team
          {:players (prepare-players match-team team)
-          ;; TODO: Utilize :match-team in data mapping
           :match-team match-team
-          :field (first (:fields team))
-          :current-field-forwards 0
-          :current-field-defenders 0
+          :current-field-forwards nil
+          :current-field-defenders nil
+          ;; Just sketching it out, idea here is to separate forward and defense fields and goalies.
+          ;; This works fine because the field simulations expect a collection of forwards and a
+          ;; collection of defenders
+          :fields [:forwards [{:index 0 :shift-length 40 :players []}
+                              {:index 1 :shift-length 30 :players []}]
+                   :defenders [{:index 0 :shift-length 60 :players []}]
+                   :goalies []]
+          ;; I think this is still just fine as a field, very clojure-idiomatic
+          :field [nil nil nil]     ;; Needs to be initialized like with field full of nil position vectors so changing players also create the same structure
+          ;; EOS
           :shots 0
           :blocked 0
           :missed 0

@@ -46,11 +46,13 @@
        (rand-nth (get-in names-dict [locale :first-names]))))
 
 (defn calculate-match-attack [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and morale
+  ;; FIXME: Proper mapping including team attributes, personal fitness and morale (and power-play/short-handed situations?)
+  ;; TODO: Consider having power-play/short-handed multipliers for each player
   (* (:attack player) (* 0.5 (+ (:morale player) (:fitness player)))))
 
 (defn calculate-match-defense [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and morale
+  ;; FIXME: Proper mapping including team attributes, personal fitness and morale (and power-play/short-handed situations?)
+  ;; TODO: Consider having power-play/short-handed multipliers for each player
   (* (:defense player) (* 0.5 (+ (:morale player) (:fitness player)))))
 
 (defn calculate-match-skill [team player]
