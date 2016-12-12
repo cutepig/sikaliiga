@@ -175,7 +175,8 @@
             (should= expected actual)))
 
       (it "returns state as was when this team doesn't have posession"
-          (let [expected (assoc state :posession :away :seconds 1)]
+          (let [state* (assoc state :posession :away :seconds 1)
+                expected state*]
             (should= expected (sikaliiga/shift-forwards expected team))))
 
       (describe

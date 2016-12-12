@@ -211,14 +211,26 @@
     ;; FIXME: Do some probability based rand here
     (not= (:posession state) (:match-team team))
       state
+    ;; TODO: Test
     ;; See if the time for current shift is past due
     (>= (:seconds state) (or (:next-shift-forwards team) 0))
       (let [next-raw-idx (inc (:current-field-forwards team))
             ;; Choose the clamp range for next calculated field index
+            ;; FIXME: We'd need to be aware of different short-handed constructions, 4-5, 3-5, 3-4
             next-idx (cond (:power-play? team) (clamp-to-range next-raw-idx 4 5)
                            (:short-handed? team) (clamp-to-range next-raw-idx 6 7)
                            :else (clamp-to-range next-raw-idx 0 3))]
-        (shift-forwards* state team next-idx))))
+        (shift-forwards* state team next-idx))
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:power-play? team) (not (power-play-forwards? team)))
+      ;; TODO Test!
+      ;; Power-play started, put on the first power-play field
+      (shift-forwards* state team 4)
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:short-handed? team) (not (short-handed-forwards? team)))
+      ;; TODO Test!
+      ;; Short-hand situation started, put on the first short-handed field
+      (shift-forwards* state team 6)))
 
 (defn shift-defenders [state team]
   (comment "TODO"))
