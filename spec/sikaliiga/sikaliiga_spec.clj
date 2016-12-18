@@ -2,7 +2,12 @@
   (:require [speclj.core :refer :all]
             [sikaliiga.util :as util]
             [sikaliiga.player :as player]
+            [sikaliiga.team :as team]
             [sikaliiga.sikaliiga :as sikaliiga]))
+
+(def team-a (team/make-test-team 50 75))
+(def team-b (team/make-test-team 50 75))
+(def state (sikaliiga/prepare-state team-a team-b))
 
 (describe
   "shot?"
@@ -51,6 +56,26 @@
 
   (it "returns false when :face-off? is not set in state"
       (should-not (sikaliiga/face-off? {:face-off? false}))))
+
+(describe
+  "add-face-off"
+  (describe
+    "when given pristine state"
+    (let [winner-player (player/make-test-player (util/make-uuid) 1 1 ::player/center ::player/dressed)
+          loser-player (player/make-test-player (util/make-uuid) 0.75 0.75 ::player/center ::player/dressed)
+          state* (-> state
+                     (assoc :sentinel :foo)
+                     (assoc :seconds 0)
+                     (assoc-in [:teams :home :players] {(:id winner-player) winner-player})
+                     (assoc-in [:teams :away :players] {(:id loser-player) loser-player}))]
+      (it "returns full modified state"
+          (should= (-> state* (assoc :posession :home)
+                             (assoc :events [[:face-off 0 (:id winner-player) (:id loser-player)]])
+                             (assoc-in [:teams :home :players (:id winner-player) :face-offs] 1)
+                             (assoc-in [:teams :home :players (:id winner-player) :face-off-wins] 1)
+                             (assoc-in [:teams :away :players (:id loser-player) :face-offs] 1)
+                             (assoc-in [:teams :away :players (:id loser-player) :face-off-wins] 0))
+                   (sikaliiga/add-face-off state* :home (:id winner-player) :away (:id loser-player)))))))
 
 (describe
   "shift-forwards?"
@@ -134,60 +159,28 @@
     (it "returns true when current field is not short-handed"
         (should (sikaliiga/shift-defenders? {:seconds 10} {:next-shift-defenders 20 :current-field-defenders 0 :short-handed? true})))))
 
-(let [team {:match-team :home
-            :players (util/key-by :id [{:id 1 :position ::player/goalie :status ::player/dressed}
-                                       {:id 2 :position ::player/goalie :status ::player/dressed}
-                                       {:id 3 :position ::player/defender :status ::player/dressed}
-                                       {:id 4 :position ::player/defender :status ::player/dressed}
-                                       {:id 5 :position ::player/defender :status ::player/dressed}
-                                       {:id 6 :position ::player/defender :status ::player/dressed}
-                                       {:id 7 :position ::player/defender :status ::player/dressed}
-                                       {:id 8 :position ::player/defender :status ::player/dressed}
-                                       {:id 9 :position ::player/left-wing :status ::player/dressed}
-                                       {:id 10 :position ::player/left-wing :status ::player/dressed}
-                                       {:id 11 :position ::player/left-wing :status ::player/dressed}
-                                       {:id 12 :position ::player/left-wing :status ::player/dressed}
-                                       {:id 13 :position ::player/center :status ::player/dressed}
-                                       {:id 14 :position ::player/center :status ::player/dressed}
-                                       {:id 15 :position ::player/center :status ::player/dressed}
-                                       {:id 16 :position ::player/center :status ::player/dressed}
-                                       {:id 17 :position ::player/right-wing :status ::player/dressed}
-                                       {:id 18 :position ::player/right-wing :status ::player/dressed}
-                                       {:id 19 :position ::player/right-wing :status ::player/dressed}
-                                       {:id 20 :position ::player/right-wing :status ::player/dressed}])
-            :fields {:forwards [{:index 0 :shift-length 40 :players [9 13 17]}
-                                {:index 1 :shift-length 30 :players [10 14 18]}
-                                {:index 2 :shift-length 20 :players [11 15 19]}
-                                {:index 3 :shift-length 10 :players [12 16 20]}
-                                {:index 4 :shift-length 60 :players [17 13 9]}
-                                {:index 5 :shift-length 40 :players [18 14 10]}
-                                {:index 6 :shift-length 60 :players [10 14]}
-                                {:index 6 :shift-length 60 :players [11 15]}]}
-            :field [nil nil nil]
-            :posession :home}
-      state {:seconds 0 :teams {:home team}}]
+(describe
+  "shift-forwards"
+  (it "returns first field in state team on period starts"
+      (let [state* (assoc state :seconds 0)
+            expected [nil nil (:players (first (get-in team-a [:fields :forwards])))]
+            actual (get-in (sikaliiga/shift-forwards state* (get-in state [:teams :home])) [:teams :home :field])]
+        (should= expected actual)))
 
+  (it "returns state as was when this team doesn't have posession"
+      (let [state* (assoc state :posession :away :seconds 1)
+            expected state*]
+        (should= expected (sikaliiga/shift-forwards expected (get-in state [:teams :home])))))
+
+  (describe
+    "shifting when"
     (describe
-      "shift-forwards"
-      (it "returns first field in state team on period starts"
-          (let [expected [nil nil (:players (first (get-in team [:fields :forwards])))]
-                actual (get-in (sikaliiga/shift-forwards state team) [:teams :home :field])]
-            (should= expected actual)))
+      "team is on power-play"
+      (it "returns next power-play field in state team"
+          (pending "TODO")))))
 
-      (it "returns state as was when this team doesn't have posession"
-          (let [state* (assoc state :posession :away :seconds 1)
-                expected state*]
-            (should= expected (sikaliiga/shift-forwards expected team))))
-
-      (describe
-        "shifting when"
-        (describe
-          "team is on power-play"
-          (it "returns next power-play field in state team"
-              (pending "TODO")))))
-
-    (describe
-      "shift-defenders"
-      (it "TODO"
-          (pending "TODO"))))
+(describe
+  "shift-defenders"
+  (it "TODO"
+      (pending "TODO")))
 

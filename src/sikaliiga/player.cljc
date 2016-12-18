@@ -7,14 +7,14 @@
 (s/def ::age integer?)
 (s/def ::name string?)
 (s/def ::locale keyword?)
-(s/def ::position #(contains? [::goalie ::defense ::left-wing ::center ::right-wing] %))
+(s/def ::position #{::goalie ::defense ::left-wing ::center ::right-wing})
 (s/def ::attack number?)
 (s/def ::attack-potential number?)
 (s/def ::defense number?)
 (s/def ::defense-potential number?)
 (s/def ::fitness number?)
 (s/def ::morale number?)
-(s/def ::status #(contains? [::dressed ::injured ::penalty ::bench ::match-penalty] %))
+(s/def ::status #{::dressed ::injured ::penalty ::bench ::match-penalty})
 
 (s/def ::player (s/keys :req-un [::id ::age ::name ::locale ::position ::attack
                                  ::attack-potential ::defense ::defense-potential
@@ -45,18 +45,20 @@
        ", "
        (rand-nth (get-in names-dict [locale :first-names]))))
 
+;; TODO: Tests
 (defn calculate-match-attack [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and morale (and power-play/short-handed situations?)
-  ;; TODO: Consider having power-play/short-handed multipliers for each player
-  (* (:attack player) (* 0.5 (+ (:morale player) (:fitness player)))))
+  (let [modifier (cond (:power-play? team) (:power-play player)
+                       (:short-handed? team) (:short-handed player)
+                       :else 0)]
+       (* (+ (:attack player) modifier) (* 0.5 (+ (:morale player) (:fitness player))))))
 
 (defn calculate-match-defense [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and morale (and power-play/short-handed situations?)
-  ;; TODO: Consider having power-play/short-handed multipliers for each player
-  (* (:defense player) (* 0.5 (+ (:morale player) (:fitness player)))))
+  (let [modifier (cond (:power-play? team) (:power-play player)
+                       (:short-handed? team) (:short-handed player)
+                       :else 0)]
+       (* (+ (:defense player) modifier) (* 0.5 (+ (:morale player) (:fitness player))))))
 
 (defn calculate-match-skill [team player]
-  ;; FIXME: Proper mapping including team attributes, personal fitness and morale
   (* 0.5 (+ (calculate-match-attack team player)
             (calculate-match-defense team player))))
 
@@ -117,6 +119,15 @@
      :attack-potential attack-potential
      :defense defense
      :defense-potential defense-potential
+     :power-play (rnd -0.1 -0.1)
+     :short-handed (rnd -0.1 -0.1)
      :fitness 1
      :morale 1
      :status ::dressed}))
+
+(defn make-test-player [id attack defense position status]
+    {:id id :position position :status status :age 20 :name "Teemu mä itken" :locale :fi
+     :attack attack :defense defense :fitness 1 :morale 1 :attack-potential attack
+     :defense-potential defense :on-ice? false
+     :toc 0 :face-offs 0 :face-off-wins 0 :shots 0 :blocked 0
+     :missed 0 :goals 0 :goals-against 0 :blocks 0})
