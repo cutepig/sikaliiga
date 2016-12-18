@@ -239,8 +239,8 @@
     (and (:short-handed? team) (not (short-handed-forwards? team)))
       ;; TODO Test!
       ;; Short-hand situation started, put on the first short-handed field
-      (shift-forwards* state team 6))
-    :else state)
+      (shift-forwards* state team 6)
+    :else state))
 
 (defn shift-defenders [state team]
   (comment "TODO")

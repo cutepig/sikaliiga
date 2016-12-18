@@ -160,6 +160,14 @@
         (should (sikaliiga/shift-defenders? {:seconds 10} {:next-shift-defenders 20 :current-field-defenders 0 :short-handed? true})))))
 
 (describe
+  "shift-forwards*"
+  (it "returns requested field"
+      (let [state* (assoc state :seconds 0)
+            expected [nil nil (:players (first (get-in team-a [:fields :forwards])))]
+            actual (get-in (sikaliiga/shift-forwards* state* (get-in state [:teams :home]) 0) [:teams :home :field])]
+        (should= expected actual))))
+
+(describe
   "shift-forwards"
   (it "returns first field in state team on period starts"
       (let [state* (assoc state :seconds 0)
