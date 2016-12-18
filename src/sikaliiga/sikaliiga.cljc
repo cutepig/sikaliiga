@@ -5,7 +5,7 @@
             [sikaliiga.player :as player]
             [sikaliiga.team :as team]))
 
-(s/check-asserts true)
+; (s/check-asserts true)
 
 ;; Specs FIXME: Some are deprecated models
 (s/def :player/team uuid?)  ;; TODO: Add this back in, temporarily removed because of tests dont def this
@@ -76,12 +76,13 @@
     (goal? attack goalie rand)))
 
 (defn add-posession [state match-team]
-  (s/assert (s/cat :state ::state :match-team keyword?) [state match-team])
+  (s/assert (s/cat :add-posession/state ::state :add-posession/match-team keyword?) [state match-team])
   (assoc state :posession match-team))
 
 (defn add-face-off [state winner-match-team winner-player-id loser-match-team loser-player-id]
-  (s/assert (s/cat :state ::state :winner-match-team keyword? :winner-player-id uuid?
-                   :loser-match-team keyword? :loser-player-id uuid?)
+  (s/assert (s/cat :add-face-off/state ::state :add-face-off/winner-match-team keyword?
+                   :add-face-off/winner-player-id uuid? :add-face-off/loser-match-team keyword?
+                   :add-face-off/loser-player-id uuid?)
     [state winner-match-team winner-player-id loser-match-team loser-player-id])
   (-> state
       (assoc :posession winner-match-team)
@@ -92,26 +93,29 @@
       (update :events #(conj % [:face-off (:seconds state) winner-player-id loser-player-id]))))
 
 (defn add-shot [state match-team player-id]
-  (s/assert (s/cat :state ::state :match-team keyword? :player-id uuid?)
+  (s/assert (s/cat :add-shot/state ::state :add-shot/match-team keyword? :add-shot/player-id uuid?)
             [state match-team player-id])
   (-> state
       (update-in [:teams match-team :players player-id :shots] inc)
       (update :events #(conj % [:shot (:seconds state) match-team player-id]))))
 
 (defn add-block [state blocking-match-team blocking-player-id blocked-match-team blocked-player-id]
-  (s/assert (s/cat :state ::state :blocking-match-team keyword? :blocking-player-id uuid? :blocked-match-team keyword? :blocked-player-id uuid?)
+  (s/assert (s/cat :add-block/state ::state :add-block/blocking-match-team keyword?
+                   :add-block/blocking-player-id uuid? :add-block/blocked-match-team keyword?
+                   :add-block/blocked-player-id uuid?)
     [state blocking-match-team blocking-player-id blocked-match-team blocked-player-id])
   (-> state
       (update-in [:teams blocking-match-team :players blocking-player-id :blocks] inc)
       (update-in [:teams blocked-match-team :players blocked-player-id :blocked] inc)))
 
 (defn add-miss [state match-team shooter-id]
-  (s/assert (s/cat :state ::state :match-team keyword? :shooter-id uuid?)
+  (s/assert (s/cat :add-miss/state ::state :add-miss/match-team keyword? :add-miss/shooter-id uuid?)
     [state match-team shooter-id])
   (update-in state [:teams match-team :players shooter-id :missed] inc))
 
 (defn add-sog [state sog-match-team shooter-id sog-against-match-team goalie-id]
-  (s/assert (s/cat :state ::state :sog-match-team keyword? :shooter-id uuid? :sog-against-match-team keyword? :goalie-id uuid?)
+  (s/assert (s/cat :add-sog/state ::state :add-sog/sog-match-team keyword? :add-sog/shooter-id uuid?
+                   :add-sog/sog-against-match-team keyword? :add-sog/goalie-id uuid?)
     [state sog-match-team shooter-id sog-against-match-team goalie-id])
   (-> state
       (update-in [:teams sog-match-team :players shooter-id :sog] inc)
@@ -121,10 +125,11 @@
 
 ;; TODO: assists
 (defn add-goal [state goal-match-team shooter-id goal-against-match-team goalie-id]
-  (s/assert (s/cat :state ::state :goal-match-team keyword? :shooter-id uuid? :goal-against-match-team keyword? :goalie-id uuid?)
+  (s/assert (s/cat :add-goal/state ::state :add-goal/goal-match-team keyword?
+                   :add-goal/shooter-id uuid? :add-goal/goal-against-match-team keyword?
+                   :add-goal/goalie-id uuid?)
     [state goal-match-team shooter-id goal-against-match-team goalie-id])
   (-> state
-      (add-sog goal-match-team shooter-id goal-against-match-team goalie-id)
       (update-in [:teams goal-match-team :players shooter-id :goals] inc)
       ;; FIXME: goalie-id might be nil, this might effect stats calculation
       (update-in [:teams goal-against-match-team :players goalie-id :goals-against] inc)
@@ -146,6 +151,27 @@
 ;;   missed?
 ;;   goal?
 ;; Part of these has to be done inline without external reducer
+
+(defn get-goalie [team field]
+  (s/assert (s/cat :get-goalie/team ::team :get-goalie/field ::field/field) [team field])
+  (get-in team [:players (field/get-goalie field)]))
+
+(defn get-blocker [team field]
+  (s/assert (s/cat :get-blocker/team ::team :get-blocker/field ::field/field) [team field])
+  (get-in team [:players (util/rnd-nth (field/get-defenders field))]))
+
+;; TODO: Team tactics should affect the shooter (forwards vs defender)
+(defn get-shooter [team field]
+  ; (println "get-shooter" field)
+  (s/assert (s/cat :get-shooter/team ::team :get-shooter/field ::field/field) [team field])
+  ;; FIXME: When we finally get defenders shifts implemented, use get-players
+  (comment (get-in team [:players (util/rnd-nth (field/get-players field))]))
+  (get-in team [:players (util/rnd-nth (field/get-forwards field))]))
+
+(defn get-center [team field]
+  (s/assert (s/cat :get-center/team ::team :get-center/field ::field/field)
+    [team field])
+  (get-in team [:players (field/get-center field)]))
 
 (defn power-play? [state team]
   ;; FIXME: We may have to be calculating penalt boxes for both teams
@@ -193,11 +219,12 @@
       (and (not (:short-handed? team)) (short-handed-defenders? team))))
 
 (defn shift-forwards* [state team idx]
+  ; (println "shift-forwards*" idx (get-in state [:teams (:match-team team) :field]))
   (s/assert (s/cat :shift-forwards*/state ::state :shift-forwards*/team ::team :shift-forwards*/idx int?)
     [state team idx])
   (let [match-team (:match-team team)
         field (get-in team [:fields :forwards idx])]
-    (s/assert (s/cat :match-team keyword? :field ::team/field)
+    (s/assert (s/cat :shift-forwards*/match-team keyword? :shift-fowards*/field ::team/field)
       [match-team field])
     (-> state
         ;; TODO: Reset on-ice? for players in old field and set it for the new field
@@ -242,9 +269,28 @@
       (shift-forwards* state team 6)
     :else state))
 
+(defn shift-defenders* [state team idx]
+  ; (println "shift-defenders*" idx (get-in team [:fields :defenders :idx])
+  ;   (get-in state [:teams (:match-team team) :field]))
+  state)
+
 (defn shift-defenders [state team]
   (comment "TODO")
-  state)
+  (cond
+    (util/period-start? (:seconds state))
+      (shift-defenders* state team 0)
+    :else state))
+
+(defn shift-goalie* [state team idx]
+  ;; TODO: Be smarter, dressed? injured? etc..
+  (let [goalie (nth (get-in team [:fields :goalies]) 0)]
+    (update-in state [:teams (:match-team team) :field]
+      #(assoc % 0 goalie))))
+
+(defn shift-goalie [state team]
+  (if (nil? (get-goalie team (:field team)))
+    (shift-goalie* state team 0)
+    state))
 
 ;; NOTE: One part of PP and SH skills come from the fact that defending team has
 ;; one player less than the other and skills are probably biased towards A and D
@@ -287,14 +333,11 @@
   (->> (-> state
            (shift-forwards (get-in state [:teams :home]))
            (shift-defenders (get-in state [:teams :home]))
+           (shift-goalie (get-in state [:teams :home]))
            (shift-forwards (get-in state [:teams :away]))
-           (shift-defenders (get-in state [:teams :away])))
+           (shift-defenders (get-in state [:teams :away]))
+           (shift-goalie (get-in state [:teams :away])))
        (s/assert map?)))
-
-(defn get-center [team field]
-  (s/assert (s/cat :team ::team :field ::field/field)
-    [team field])
-  (get-in team [:players (field/get-center field)]))
 
 (defn face-off? [state]
   (s/assert map? state)
@@ -306,6 +349,7 @@
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
+  ; (println "simulate-face-off" (get-in state [:teams :home :field]))
   (s/assert map? state)
   (let [team-a (get-in state [:teams :home])
         team-b (get-in state [:teams :away])
@@ -358,28 +402,19 @@
   (s/assert map? state)
   (get-in state [:teams (get-non-posession state)]))
 
-(defn get-goalie [team field]
-  (s/assert (s/cat :team ::team :field ::field) [team field])
-  (get-in team [:players (field/get-goalie field)]))
-
-(defn get-blocker [team field]
-  (s/assert (s/cat :team ::team :field ::field) [team field])
-  (get-in team [:players (util/rnd-nth (field/get-defenders field))]))
-
-;; TODO: Team tactics should affect the shooter (forwards vs defender)
-(defn get-shooter [team field]
-  (s/assert (s/cat :team ::team :field ::field) [team field])
-  (get-in team [:players (util/rnd-nth (field/get-players field))]))
-
 (defn simulate-goal [state shooter attacking-team defending-team]
-  (s/assert (s/cat :state ::state :shooter ::player :attacking-team ::team :defending-team ::team) [state shooter attacking-team defending-team])
+  (s/assert (s/cat :simulate-goal/state ::state :simulate-goal/shooter ::player
+                   :simulate-goal/attacking-team ::team :simulate-goal/defending-team ::team)
+    [state shooter attacking-team defending-team])
   (let [goalie (get-goalie defending-team (:field defending-team))]
     (if (goal? (player/calculate-match-attack attacking-team shooter) (player/calculate-match-defense defending-team goalie))
         (add-goal state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie))
         (add-sog state (:match-team attacking-team) (:id shooter) (:match-team defending-team) (:id goalie)))))
 
 (defn simulate-miss [state shooter attacking-team defending-team]
-  (s/assert (s/cat :state ::state :shooter ::player :attacking-team ::team :defending-team ::team) [state shooter attacking-team defending-team])
+  (s/assert (s/cat :simulate-miss/state ::state :simulate-miss/shooter ::player
+                   :simulate-miss/attacking-team ::team :simulate-miss/defending-team ::team)
+    [state shooter attacking-team defending-team])
   (let [defense (calculate-field-defense defending-team (:field defending-team))]
     (if (missed? (player/calculate-match-attack attacking-team shooter) defense)
         (add-miss state (:match-team attacking-team) (:id shooter))

@@ -36,16 +36,16 @@
   "compare-substitute"
 
   (it "returns candidate when best is nil"
-    (let [candidate (player/make-test-player nil 1.0 1.0 ::player/center nil)]
+    (let [candidate (player/make-test-player nil 1.0 1.0 ::player/center ::player/dressed)]
       (should= [candidate 1.0] (field/compare-substitute [nil nil] candidate ::player/center {}))))
 
   (describe
     "when requested position is center"
     (let [best (player/make-test-player nil 0.5 0.5 ::player/center nil)]
       (it "favors overall skill over attack or defense"
-          (let [candidate (player/make-test-player nil 0.75 0.0 ::player/center nil)]
+          (let [candidate (player/make-test-player nil 0.75 0.0 ::player/center ::player/dressed)]
             (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/center {})))
-          (let [candidate (player/make-test-player nil 0.0 0.75 ::player/center nil)]
+          (let [candidate (player/make-test-player nil 0.0 0.75 ::player/center ::player/dressed)]
             (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/center {}))))))
 
     (describe
@@ -54,35 +54,35 @@
         (describe
           "favors attack over defense or overall skill"
           (it "when candidate is a forward with higher defense but lesser overall skill"
-              (let [candidate (player/make-test-player nil 0.25 1 ::player/left-wing nil)]
+              (let [candidate (player/make-test-player nil 0.25 1 ::player/left-wing ::player/dressed)]
                 (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/left-wing {}))))
           (it "when candidate is a defender with higher attack"
-              (let [candidate (player/make-test-player nil 0.75 0 ::player/defense nil)]
+              (let [candidate (player/make-test-player nil 0.75 0 ::player/defense ::player/dressed)]
                 (should= [candidate 0.75] (field/compare-substitute [best 0.5] candidate ::player/left-wing {})))))))
 
     (describe
       "when requested position is defender"
-      (let [best (player/make-test-player nil 0.5 0.5 ::player/defense nil)]
+      (let [best (player/make-test-player nil 0.5 0.5 ::player/defense ::player/dressed)]
         (describe
           "favors defense over attack or overall skill"
           (it "when candidate is a defender with higher attack but lesser overall skill"
-              (let [candidate (player/make-test-player nil 0.75 0 ::player/defense nil)]
+              (let [candidate (player/make-test-player nil 0.75 0 ::player/defense ::player/dressed)]
                 (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/defense {}))))
           (it "when candidate is a forward with higher defense"
-              (let [candidate (player/make-test-player nil 0 0.75 ::player/center nil)]
+              (let [candidate (player/make-test-player nil 0 0.75 ::player/center ::player/dressed)]
                 (should= [candidate 0.75] (field/compare-substitute [best 0.5] candidate ::player/defense {}))))))))
 
 (describe
   "collect-substitute-candidates"
   (it "eliminates those in excluded list"
-      (let [candidates [(player/make-test-player (util/make-uuid) 1.0 1.0 nil ::player/dressed)
-                        (player/make-test-player (util/make-uuid) 1.0 1.0 nil ::player/dressed)]
+      (let [candidates [(player/make-test-player (util/make-uuid) 1.0 1.0 ::player/center ::player/dressed)
+                        (player/make-test-player (util/make-uuid) 1.0 1.0 ::player/center ::player/dressed)]
             excluded [(:id (second candidates))]]
         (should= (take 1 candidates) (field/collect-substitute-candidates candidates excluded))))
 
   (it "eliminates non-dressed players"
-      (let [candidates [(player/make-test-player nil 1 1 nil ::player/dressed)
-                        (player/make-test-player nil 1 1 nil ::player/injured)]]
+      (let [candidates [(player/make-test-player nil 1 1 ::player/center ::player/dressed)
+                        (player/make-test-player nil 1 1 ::player/center ::player/injured)]]
         (should= (take 1 candidates) (field/collect-substitute-candidates candidates [])))))
 
 (describe
@@ -129,9 +129,18 @@
       (let [left-wing (player/make-test-player (util/make-uuid) 1 1 ::player/left-wing ::player/injured)
             center (player/make-test-player (util/make-uuid) 1 1 ::player/center ::player/injured)
             right-wing (player/make-test-player (util/make-uuid) 1 1 ::player/right-wing ::player/injured)
-            team {:players (util/key-by :id [left-wing center right-wing])}
+            team (assoc team :players (util/key-by :id [left-wing center right-wing]))
             field [(:id left-wing) (:id center) (:id right-wing)]]
         (should= [nil nil nil] (field/pick-forwards-for-field team field))))
+
+  (it "returns populated field from field of nils"
+      (let [left-wing (player/make-test-player (util/make-uuid) 1 1 ::player/left-wing ::player/dressed)
+            center (player/make-test-player (util/make-uuid) 1 1 ::player/center ::player/dressed)
+            right-wing (player/make-test-player (util/make-uuid) 1 1 ::player/right-wing ::player/dressed)
+            team (assoc team :players (util/key-by :id [left-wing center right-wing]))
+            field [(:id left-wing) (:id center) (:id right-wing)]]
+        (should= [(:id left-wing) (:id center) (:id right-wing)]
+                 (field/pick-forwards-for-field team field))))
 
   (it "returns original field with extra attacker when all players on it are dressed"
       (pending "TODO"))

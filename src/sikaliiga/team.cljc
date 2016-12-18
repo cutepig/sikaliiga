@@ -4,8 +4,6 @@
             [sikaliiga.player :as player]
             [sikaliiga.field :as field]))
 
-(s/check-asserts true)
-
 (s/def ::id uuid?)
 (s/def ::name string?)
 (s/def ::players (s/map-of uuid? ::player/player))

@@ -3,29 +3,34 @@
             [sikaliiga.util :as util]
             [sikaliiga.player :as player]))
 
-(s/check-asserts true)
-
 ;; Field can be [nil] [[#uuid]] or [[#uuid nil]]
 ;; So players can be nil [#uuid] or [#uuid nil]
-(s/def ::players (s/or :players/nil nil? :players/coll (s/coll-of (s/or :player/nil nil? :player/player uuid?))))
-(s/def ::field (s/or :field/nil nil? :field/players (s/coll-of ::players)))
+(s/def ::players (s/nilable (s/coll-of (s/nilable uuid?))))
+(s/def ::field (s/nilable (s/cat :field/goalie (s/or :goalie/nil nil? :goalie/id uuid?)
+                                 :field/defenders ::players :field/forwards ::players)))
 
 (defn get-players [field]
+  (s/assert ::field field)
   (flatten (rest field)))
 
 (defn get-goalie [field]
+  (s/assert ::field field)
   (first field))
 
 (defn get-defenders [field]
+  (s/assert ::field field)
   (second field))
 
 (defn get-defender [field n]
+  (s/assert (s/cat :get-defender/field ::field :get-defender/n int?) [field n])
   (nth (get-defenders field) n))
 
 (defn get-forwards [field]
+  (s/assert ::field field)
   (nth field 2))
 
 (defn get-left-wing [field]
+  (s/assert ::field field)
   (first (get-forwards field)))
 
 (defn get-center [field]
@@ -35,19 +40,23 @@
     center))
 
 (defn get-right-wing [field]
+  (s/assert ::field field)
   (nth (get-forwards field) 2))
 
 (defn get-extra-forward [field]
+  (s/assert ::field field)
   (nth (get-forwards field) 3))
 
 (defn get-player-by-index [field index]
-  (s/assert (s/cat :field ::field :index ::index) [field index])
+  (s/assert (s/cat :get-player-by-index/field ::field :get-player-by-index/index int?)
+    [field index])
   (cond
     (> index 2) (nth (nth field 2) (- index 3))
     (> index 0) (nth (second field) (dec index))
     :else (first field)))
 
 (defn get-position-by-index [index]
+  (s/assert int? index)
   ;; FIXME: That pesky `::player/extra-attacker` is probably not the correct value to put here
   (nth [::player/goalie ::player/defense ::player/defense ::player/left-wing ::player/center ::player/right-wing ::player/extra-attacker] index))
 
