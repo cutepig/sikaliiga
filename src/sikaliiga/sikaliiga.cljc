@@ -21,9 +21,11 @@
 
 (s/def :team/field ::field/field)
 (s/def :team/players (s/map-of uuid? ::player))
+(s/def :team/match-team #{:home :away})
 
 (s/def ::team (s/merge ::team/team
-                       (s/keys :req-un [:team/field :team/players])))
+                       (s/keys :req-un [:team/field :team/players :team/match-team
+                                        :team/current-field-forwards :team/current-field-defenders])))
 
 (s/def ::seconds integer?)
 (s/def ::posession keyword?)
@@ -232,11 +234,6 @@
         (assoc-in [:teams match-team :current-field-forwards] idx)
         (assoc-in [:teams match-team :next-shift-forwards] (+ (:seconds state) (:shift-length field))))))
 
-(defn clamp-to-range
-  "clamp n so that min <= n <= max"
-  [n min max]
-  (+ min (mod (- n min) (- (inc max) min))))
-
 (defn shift-forwards [state team]
   (s/assert (s/cat :shift-forwards/state ::state :shift-forwards/team ::team) [state team])
   (cond
@@ -253,18 +250,16 @@
       (let [next-raw-idx (inc (:current-field-forwards team))
             ;; Choose the clamp range for next calculated field index
             ;; FIXME: We'd need to be aware of different short-handed constructions, 4-5, 3-5, 3-4
-            next-idx (cond (:power-play? team) (clamp-to-range next-raw-idx 4 5)
-                           (:short-handed? team) (clamp-to-range next-raw-idx 6 7)
-                           :else (clamp-to-range next-raw-idx 0 3))]
+            next-idx (cond (:power-play? team) (util/mod-to-range next-raw-idx 4 5)
+                           (:short-handed? team) (util/mod-to-range next-raw-idx 6 7)
+                           :else (util/mod-to-range next-raw-idx 0 3))]
         (shift-forwards* state team next-idx))
     ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
     (and (:power-play? team) (not (power-play-forwards? team)))
-      ;; TODO Test!
       ;; Power-play started, put on the first power-play field
       (shift-forwards* state team 4)
     ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
     (and (:short-handed? team) (not (short-handed-forwards? team)))
-      ;; TODO Test!
       ;; Short-hand situation started, put on the first short-handed field
       (shift-forwards* state team 6)
     :else state))
@@ -366,6 +361,7 @@
 ;; TODO: One idea I had was that posession should "stick", meaning that the team that has the posession
 ;; from last second should have higher probability to maintain the posession.
 ;; Also PP and SH should affect the probability for posession
+;; Ane also if team performed a shift this second there is a smaller chance to gain posession
 (defn simulate-posession* [state]
   (s/assert map? state)
   (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))

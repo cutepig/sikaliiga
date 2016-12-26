@@ -1,9 +1,12 @@
 (ns sikaliiga.sikaliiga-spec
   (:require [speclj.core :refer :all]
+            [clojure.spec :as s]
             [sikaliiga.util :as util]
             [sikaliiga.player :as player]
             [sikaliiga.team :as team]
             [sikaliiga.sikaliiga :as sikaliiga]))
+
+(s/check-asserts true)
 
 (def team-a (team/make-test-team 50 75))
 (def team-b (team/make-test-team 50 75))
@@ -180,12 +183,44 @@
             expected state*]
         (should= expected (sikaliiga/shift-forwards expected (get-in state [:teams :home])))))
 
-  (describe
-    "shifting when"
-    (describe
-      "team is on power-play"
-      (it "returns next power-play field in state team"
-          (pending "TODO")))))
+  (it "returns the next field when shift time is up"
+      (let [lines (range 4)
+            state* (map lines #(assoc state :seconds 1 :posession :home :next-shift-forwards 1 :current-field-forwards %))
+            expected (map #(vector nil nil (:players (nth (get-in team-a [:fields :forwards]) (util/mod-to-range (inc %) 0 3)))) lines)
+            actual (map #(get-in (sikaliiga/shift-forwards % (get-in state [:teams :home])) [:teams :home :field]) state*)]
+        (map #(should= %1 %2) expected actual)))
+
+  (it "returns the next power-play field when shift time is up"
+      (let [lines (range 4 6)
+            state* (map lines #(assoc state :seconds 1 :posession :home :next-shift-forwards 1 :power-play? true :current-field-forwards %))
+            expected (map #(vector nil nil (:players (nth (get-in team-a [:fields :forwards]) (util/mod-to-range (inc %) 4 5)))) lines)
+            actual (map #(get-in (sikaliiga/shift-forwards % (get-in state [:teams :home])) [:teams :home :field]) state*)]
+        (map #(should= %1 %2) expected actual)))
+
+  (it "returns the next short-handed field when shift time is up"
+      (let [lines (range 6 8)
+            state* (map lines #(assoc state :seconds 1 :posession :home :next-shift-forwards 1 :power-play? true :current-field-forwards %))
+            expected (map #(vector nil nil (:players (nth (get-in team-a [:fields :forwards]) (util/mod-to-range (inc %) 6 7)))) lines)
+            actual (map #(get-in (sikaliiga/shift-forwards % (get-in state [:teams :home])) [:teams :home :field]) state*)]
+        (map #(should= %1 %2) expected actual)))
+
+  (it "returns first power-play field on power-play when current field is not power-play"
+      (let [state* (-> state (assoc :seconds 1 :posession :home)
+                             (assoc-in [:teams :home :power-play?] true)
+                             (assoc-in [:teams :home :next-shift-forwards] 999)
+                             (assoc-in [:teams :home :current-field-forwards] 0))
+            expected [nil nil (:players (nth (get-in team-a [:fields :forwards]) 4))]
+            actual (get-in (sikaliiga/shift-forwards state* (get-in state* [:teams :home])) [:teams :home :field])]
+        (should= expected actual)))
+
+  (it "returns first short-handed field on short-handed when current field is not short-handed"
+      (let [state* (-> state (assoc :seconds 1 :posession :home)
+                             (assoc-in [:teams :home :short-handed?] true)
+                             (assoc-in [:teams :home :next-shift-forwards] 999)
+                             (assoc-in [:teams :home :current-field-forwards] 0))
+            expected [nil nil (:players (nth (get-in team-a [:fields :forwards]) 6))]
+            actual (get-in (sikaliiga/shift-forwards state* (get-in state* [:teams :home])) [:teams :home :field])]
+        (should= expected actual))))
 
 (describe
   "shift-defenders"

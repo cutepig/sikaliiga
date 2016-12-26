@@ -26,3 +26,8 @@
 
 (defn period-start? [seconds]
   (some? (#{0 1200 2400 3600} seconds)))
+
+(defn mod-to-range
+  "mod n so that min <= n <= max"
+  [n min max]
+  (+ min (mod (- n min) (- (inc max) min))))

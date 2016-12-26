@@ -1,9 +1,12 @@
 (ns sikaliiga.field-spec
   (:require [speclj.core :refer :all]
+            [clojure.spec :as s]
             [sikaliiga.util :as util]
             [sikaliiga.player :as player]
             [sikaliiga.team :as team]
             [sikaliiga.field :as field]))
+
+(s/check-asserts true)
 
 (def team (team/make-test-team 50 75))
 
