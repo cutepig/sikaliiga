@@ -279,3 +279,18 @@
             actual (get-in (sikaliiga/shift-defenders state* (get-in state* [:teams :home])) [:teams :home :field])]
         (should= expected actual))))
 
+(describe
+  "shift-goalie"
+  (it "returns first goalie when goalie is nil"
+      (let [state* (assoc state :seconds 0)
+            expected (first (get-in state* [:teams :home :fields :goalies]))
+            actual (get-in (sikaliiga/shift-goalie state* (get-in state [:teams :home])) [:teams :home :field 0])]
+        (should= expected actual)))
+
+  (it "returns state unchanged when goalie is set"
+      (let [state* (-> state (assoc :seconds 0)
+                             (assoc-in [:teams :home :field 0] (first (get-in team-a [:fields :goalies]))))
+            expected state*
+            actual (sikaliiga/shift-goalie state* (get-in state [:teams :home]))]
+        (should= expected actual))))
+
