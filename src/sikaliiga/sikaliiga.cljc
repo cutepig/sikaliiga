@@ -164,11 +164,10 @@
 
 ;; TODO: Team tactics should affect the shooter (forwards vs defender)
 (defn get-shooter [team field]
-  ; (println "get-shooter" field)
   (s/assert (s/cat :get-shooter/team ::team :get-shooter/field ::field/field) [team field])
-  ;; FIXME: When we finally get defenders shifts implemented, use get-players
-  (comment (get-in team [:players (util/rnd-nth (field/get-players field))]))
-  (get-in team [:players (util/rnd-nth (field/get-forwards field))]))
+  ;; FIXME: Bias towards forwards
+  ;; FIXME: Bias offset based on team tactics
+  (get-in team [:players (util/rnd-nth (field/get-players field))]))
 
 (defn get-center [team field]
   (s/assert (s/cat :get-center/team ::team :get-center/field ::field/field)
@@ -471,16 +470,32 @@
       (simulate-shot* state attacking-team defending-team)
       state)))
 
-;; FIXME: Something is up with state updates, information seems to be getting lost
-;; With each second
+(defn simulate-attrs* [state team]
+  ;; TODO time-on-ice (toc), fitness
+  state)
+
+(defn simulate-attrs [state]
+  (-> state
+      (simulate-attrs* (get-in state [:teams :home]))
+      (simulate-attrs* (get-in state [:teams :away]))))
+
+(defn simulate-penalty-releases* [state team]
+  state)
+
+(defn simulate-penalty-releases [state]
+  (-> state
+      (simulate-penalty-releases* state (get-in state [:teams :home]))
+      (simulate-penalty-releases* state (get-in state [:teams :away]))))
+
 (defn simulate-second [state]
   (s/assert ::state state)
   (-> state
-      ;; TODO: simulate-penalty-releases
+      simulate-penalty-releases
       simulate-shifts
       simulate-posession
       simulate-extras
-      simulate-shot))
+      simulate-shot
+      simulate-attrs))
 
 (defn prepare-player-attack [team player]
   ;; TODO: Add potential home boost to attributes if (= :home (:match-team team))
@@ -553,15 +568,3 @@
 (def team-b (team/make-test-team 55 80))
 
 (def state (prepare-state team-a team-b))
-
-(comment
-  (js/console.log (simulate-game team-a team-b)))
-
-;; In-game fields shall look like this
-{:players []
- :shift-forwards 40
- :index-forwards 0
- :next-shift-forwards 40
- :shift-defenders 50
- :index-defenders 0
- :next-shift-defenders 50}

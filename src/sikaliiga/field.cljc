@@ -119,7 +119,6 @@
                    :pick-defender-for-position/field ::players
                    :pick-defender-for-position/idx int?)
     [team field idx])
-  (println "pick-defender-for-position" field)
   (assoc field idx (pick-player-for-position (nth field idx) field team (get-position-by-index (inc idx)))))
 
 (defn pick-defenders-for-field [team field]
