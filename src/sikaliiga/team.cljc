@@ -30,7 +30,7 @@
     [(:id (nth left-wings n)) (:id (nth centers n))]))
 
 (defn auto-defenders-nth [defenders n]
-  (map :id (take 2 (drop (* 2 n) defenders))))
+  (into [] (map :id (take 2 (drop (* 2 n) defenders)))))
 
 (defn auto-goalies [goalies]
   (map :id (take 2 goalies)))

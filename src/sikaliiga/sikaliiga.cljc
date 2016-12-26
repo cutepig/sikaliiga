@@ -39,11 +39,12 @@
 
 (s/def ::seconds integer?)
 (s/def ::posession keyword?)
+(s/def ::overtime boolean?)
 (s/def ::home ::team)
 (s/def ::away ::team)
 (s/def ::teams (s/keys :req-un [::home ::away]))
 (s/def ::state (s/keys :req-un [::seconds ::teams]
-                       :opt-un [::posession]))
+                       :opt-un [::posession ::overtime]))
 
 ;;
 ;; Simulation functions
@@ -393,13 +394,21 @@
 (defn simulate-posession [state]
   (s/assert map? state)
   (if (face-off? state)
-      ;; FIXME: Something is losing info here, it's proven that it's not this
       (simulate-face-off state)
       (simulate-posession* state)))
 
+(defn simulate-penalties* [state team]
+  state)
+
+(defn simulate-penalties [state]
+  (-> state
+      (simulate-penalties* (get-in state [:teams :home]))
+      (simulate-penalties* (get-in state [:teams :away]))))
+
 (defn simulate-extras [state]
   (s/assert map? state)
-  state)
+  (-> state
+      simulate-penalties))
 
 (defn get-posession [state]
   (s/assert map? state)
