@@ -22,10 +22,20 @@
 (s/def :team/field ::field/field)
 (s/def :team/players (s/map-of uuid? ::player))
 (s/def :team/match-team #{:home :away})
+(s/def :team/current-field-forwards (s/nilable integer?))
+(s/def :team/current-field-defenders (s/nilable integer?))
+(s/def :team/power-play? boolean?)
+(s/def :team/short-handed? boolean?)
+
+(s/def :penalty-sitter/time integer?)
+(s/def :penalty-sitter/length integer?)
+(s/def :team/penalty-sitter (s/keys :req-un [:penalty-sitter/time :penalty-sitter/length]))
+(s/def :team/penalty-box (s/map-of ::player/id :team/penalty-sitter))
 
 (s/def ::team (s/merge ::team/team
                        (s/keys :req-un [:team/field :team/players :team/match-team
-                                        :team/current-field-forwards :team/current-field-defenders])))
+                                        :team/current-field-forwards :team/current-field-defenders]
+                               :opt-un [:team/power-play? :team/short-handed?])))
 
 (s/def ::seconds integer?)
 (s/def ::posession keyword?)
@@ -174,15 +184,15 @@
     [team field])
   (get-in team [:players (field/get-center field)]))
 
-(defn power-play? [state team]
-  ;; FIXME: We may have to be calculating penalt boxes for both teams
-  ;; in order to know what is the real state, 5-4, 5-3, 4-3, 4-4, 3-3
-  (:power-play? team))
+(defonce opposing-match-team {:home :away :away :home})
 
-(defn short-handed [state team]
-  ;; FIXME: We may have to be calculating penalt boxes for both teams
-  ;; in order to know what is the real state, 5-4, 5-3, 4-3, 4-4, 3-3
-  (:short-handed? team))
+(defn power-play? [state team]
+  (let [other (opposing-match-team (:match-team team))]
+    (< (count (:penalty-box team)) (count (:penalty-box other)))))
+
+(defn short-handed? [state team]
+  (let [other (opposing-match-team (:match-team team))]
+    (> (count (:penalty-box team)) (count (:penalty-box other)))))
 
 (defn power-play-forwards? [team]
   (let [field-index (:current-field-forwards team)]
@@ -199,25 +209,6 @@
 (defn short-handed-defenders? [team]
   (let [field-index (:current-field-defenders team)]
     (or (= 5 field-index) (= 6 field-index))))
-
-;; FIXME: We may not even need this predicate, we can map this directly to field change
-(defn shift-forwards? [state team]
-  (or (util/period-start? (:seconds state))
-      ;; no posession - should stop here
-      (>= (:seconds state) (or (:next-shift-forwards team) 0))
-      (and (:power-play? team) (not (power-play-forwards? team)))
-      (and (:short-handed? team) (not (short-handed-forwards? team)))
-      (and (not (:power-play? team)) (power-play-forwards? team))
-      (and (not (:short-handed? team)) (short-handed-forwards? team))))
-
-(defn shift-defenders? [state team]
-  (or (util/period-start? (:seconds state))
-      ;; no posession - should stop here
-      (>= (:seconds state) (or (:next-shift-defenders team) 0))
-      (and (:power-play? team) (not (power-play-defenders? team)))
-      (and (:short-handed? team) (not (short-handed-defenders? team)))
-      (and (not (:power-play? team)) (power-play-defenders? team))
-      (and (not (:short-handed? team)) (short-handed-defenders? team))))
 
 (defn shift-forwards* [state team idx]
   (s/assert (s/cat :shift-forwards*/state ::state :shift-forwards*/team ::team :shift-forwards*/idx int?)
@@ -479,18 +470,35 @@
       (simulate-attrs* (get-in state [:teams :home]))
       (simulate-attrs* (get-in state [:teams :away]))))
 
-(defn simulate-penalty-releases* [state team]
-  state)
-
-(defn simulate-penalty-releases [state]
+(defn release-penalty-sitter [state match-team player-id]
   (-> state
-      (simulate-penalty-releases* state (get-in state [:teams :home]))
-      (simulate-penalty-releases* state (get-in state [:teams :away]))))
+      (assoc-in [:teams match-team :players player-id :status] ::player/dressed)
+      (update-in [:teams match-team :penalty-box] dissoc player-id)))
+
+(defn simulate-penalty-release* [state team]
+  (let [released (filter #(>= (:seconds state) (+ (:time (second %)) (:length (second %))))
+                         (:penalty-box team))]
+    (reduce #(release-penalty-sitter %1 (:match-team team) (first %2)) state released)))
+
+(defn mark-power-play [state team]
+  (assoc-in state [:teams (:match-team team) :power-play?] (power-play? state team)))
+
+(defn mark-short-handed [state team]
+  (assoc-in state [:teams (:match-team team) :short-handed?] (short-handed? state team)))
+
+(defn simulate-penalty-release [state]
+  (-> state
+      (simulate-penalty-release* (get-in state [:teams :home]))
+      (simulate-penalty-release* (get-in state [:teams :away]))
+      (mark-power-play (get-in state [:teams :home]))
+      (mark-power-play (get-in state [:teams :away]))
+      (mark-short-handed (get-in state [:teams :home]))
+      (mark-short-handed (get-in state [:teams :away]))))
 
 (defn simulate-second [state]
   (s/assert ::state state)
   (-> state
-      simulate-penalty-releases
+      simulate-penalty-release
       simulate-shifts
       simulate-posession
       simulate-extras
@@ -544,6 +552,7 @@
           :current-field-forwards nil
           :current-field-defenders nil
           :field [nil nil nil]     ;; Needs to be initialized like with field full of nil position vectors so changing players also create the same structure
+          :penalty-box {}
           :shots 0
           :blocked 0
           :missed 0
