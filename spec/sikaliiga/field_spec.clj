@@ -141,7 +141,7 @@
             center (player/make-test-player (util/make-uuid) 1 1 ::player/center ::player/dressed)
             right-wing (player/make-test-player (util/make-uuid) 1 1 ::player/right-wing ::player/dressed)
             team (assoc team :players (util/key-by :id [left-wing center right-wing]))
-            field [(:id left-wing) (:id center) (:id right-wing)]]
+            field [nil nil nil]]
         (should= [(:id left-wing) (:id center) (:id right-wing)]
                  (field/pick-forwards-for-field team field))))
 
@@ -156,13 +156,21 @@
   (it "returns original field when all players on it are dressed"
       (let [defender-1 (player/make-test-player (util/make-uuid) 1 1 ::player/defense ::player/dressed)
             defender-2 (player/make-test-player (util/make-uuid) 1 1 ::player/defense ::player/dressed)
-            team {:players (util/key-by :id [defender-1 defender-2])}
+            team (assoc team :players (util/key-by :id [defender-1 defender-2]))
             field [(:id defender-1) (:id defender-2)]]
         (should= field (field/pick-defenders-for-field team field))))
 
   (it "returns field of nils when none of the players on it are dressed"
       (let [defender-1 (player/make-test-player (util/make-uuid) 1 1 ::player/defense ::player/injured)
             defender-2 (player/make-test-player (util/make-uuid) 1 1 ::player/defense ::player/injured)
-            team {:players (util/key-by :id [defender-1 defender-2])}
+            team (assoc team :players (util/key-by :id [defender-1 defender-2]))
             field [(:id defender-1) (:id defender-2)]]
-        (should= [nil nil] (field/pick-defenders-for-field team field)))))
+        (should= [nil nil] (field/pick-defenders-for-field team field))))
+
+  (it "returns populated field from field of nils"
+      (let [defender-1 (player/make-test-player (util/make-uuid) 1 1 ::player/defense ::player/dressed)
+            defender-2 (player/make-test-player (util/make-uuid) 1 1 ::player/defense ::player/dressed)
+            team (assoc team :players (util/key-by :id [defender-1 defender-2]))
+            field [nil nil]]
+        (should= [(:id defender-1) (:id defender-2)]
+                 (field/pick-defenders-for-field team field)))))

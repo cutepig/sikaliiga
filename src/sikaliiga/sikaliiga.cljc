@@ -221,7 +221,6 @@
       (and (not (:short-handed? team)) (short-handed-defenders? team))))
 
 (defn shift-forwards* [state team idx]
-  ; (println "shift-forwards*" idx (get-in state [:teams (:match-team team) :field]))
   (s/assert (s/cat :shift-forwards*/state ::state :shift-forwards*/team ::team :shift-forwards*/idx int?)
     [state team idx])
   (let [match-team (:match-team team)
@@ -265,15 +264,46 @@
     :else state))
 
 (defn shift-defenders* [state team idx]
-  ; (println "shift-defenders*" idx (get-in team [:fields :defenders :idx])
-  ;   (get-in state [:teams (:match-team team) :field]))
-  state)
+  (s/assert (s/cat :shift-defenders*/state ::state :shift-defenders*/team ::team :shift-defenders*/idx int?)
+    [state team idx])
+  (let [match-team (:match-team team)
+        field (get-in team [:fields :defenders idx])]
+    (s/assert (s/cat :shift-defenders*/match-team keyword? :shift-fowards*/field ::team/field)
+      [match-team field])
+    (-> state
+        ;; TODO: Reset on-ice? for players in old field and set it for the new field
+        (assoc-in [:teams match-team :field 1] (field/pick-defenders-for-field team (:players field)))
+        (assoc-in [:teams match-team :current-field-defenders] idx)
+        (assoc-in [:teams match-team :next-shift-defenders] (+ (:seconds state) (:shift-length field))))))
 
 (defn shift-defenders [state team]
-  (comment "TODO")
+  (s/assert (s/cat :shift-defenders/state ::state :shift-defenders/team ::team) [state team])
   (cond
+    ;; Always force shift to first field on period starts
     (util/period-start? (:seconds state))
       (shift-defenders* state team 0)
+    ;; Never do shift is the team doesn't have posession
+    ;; FIXME: Do some probability based rand here
+    (not= (:posession state) (:match-team team))
+      state
+    ;; TODO: Test
+    ;; See if the time for current shift is past due
+    (>= (:seconds state) (or (:next-shift-defenders team) 0))
+      (let [next-raw-idx (inc (:current-field-defenders team))
+            ;; Choose the clamp range for next calculated field index
+            ;; FIXME: We'd need to be aware of different short-handed constructions, 4-5, 3-5, 3-4
+            next-idx (cond (:power-play? team) (util/mod-to-range next-raw-idx 3 4)
+                           (:short-handed? team) (util/mod-to-range next-raw-idx 5 6)
+                           :else (util/mod-to-range next-raw-idx 0 2))]
+        (shift-defenders* state team next-idx))
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:power-play? team) (not (power-play-defenders? team)))
+      ;; Power-play started, put on the first power-play field
+      (shift-defenders* state team 3)
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:short-handed? team) (not (short-handed-defenders? team)))
+      ;; Short-hand situation started, put on the first short-handed field
+      (shift-defenders* state team 5)
     :else state))
 
 (defn shift-goalie* [state team idx]

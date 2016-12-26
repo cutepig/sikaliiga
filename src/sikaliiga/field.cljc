@@ -6,7 +6,7 @@
 ;; Field can be [nil] [[#uuid]] or [[#uuid nil]]
 ;; So players can be nil [#uuid] or [#uuid nil]
 (s/def ::players (s/nilable (s/coll-of (s/nilable uuid?))))
-(s/def ::field (s/nilable (s/cat :field/goalie (s/or :goalie/nil nil? :goalie/id uuid?)
+(s/def ::field (s/nilable (s/cat :field/goalie (s/nilable uuid?)
                                  :field/defenders ::players :field/forwards ::players)))
 
 (defn get-players [field]
@@ -86,7 +86,7 @@
     (filter #(and (excluded? %) (player/dressed? %)) candidates)))
 
 (defn pick-player-for-position [id field team position]
-  (s/assert (s/cat :pick-player-for-position/id uuid?
+  (s/assert (s/cat :pick-player-for-position/id (s/nilable uuid?)
                    :pick-player-for-position/field ::players
                    :pick-player-for-position/team map?
                    :pick-player-for-position/position keyword?)
@@ -111,13 +111,21 @@
   ;; FIXME: This eagerly picks a substitute for left-wing that might be better suitable as center
   ;; if the original center is not dressed and requires a substitute too
   (reduce #(pick-forward-for-position team %1 %2)
-          field
+          (into [] field)
           (range (count field))))
 
+(defn pick-defender-for-position [team field idx]
+  (s/assert (s/cat :pick-defender-for-position/team map?
+                   :pick-defender-for-position/field ::players
+                   :pick-defender-for-position/idx int?)
+    [team field idx])
+  (println "pick-defender-for-position" field)
+  (assoc field idx (pick-player-for-position (nth field idx) field team (get-position-by-index (inc idx)))))
+
 (defn pick-defenders-for-field [team field]
-  (s/assert (s/cat :pick-forwards-for-field/team map?
-                   :pick-forwards-for-field/field ::players)
+  (s/assert (s/cat :pick-defenders-for-field/team map?
+                   :pick-defenders-for-field/field ::players)
     [team field])
-  (reduce #(assoc %1 %2 (pick-player-for-position (nth %1 %2) %1 team (get-position-by-index (inc %2))))
-    field
-    (range (count field))))
+  (reduce #(pick-defender-for-position team %1 %2)
+          (into [] field)
+          (range (count field))))
