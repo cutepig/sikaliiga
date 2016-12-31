@@ -25,12 +25,12 @@
    [(:id (nth left-wings n)) (:id (nth centers n)) (:id (nth right-wings n))]])
 
 (defn auto-forwards-nth [left-wings centers right-wings n]
-  (if-not (nil? right-wings)
+  (if (some? right-wings)
     [(:id (nth left-wings n)) (:id (nth centers n)) (:id (nth right-wings n))]
     [(:id (nth left-wings n)) (:id (nth centers n))]))
 
 (defn auto-defenders-nth [defenders n]
-  (into [] (map :id (take 2 (drop (* 2 n) defenders)))))
+  (vec (map :id (take 2 (drop (* 2 n) defenders)))))
 
 (defn auto-goalies [goalies]
   (map :id (take 2 goalies)))

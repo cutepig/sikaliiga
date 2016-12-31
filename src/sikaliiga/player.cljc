@@ -119,8 +119,8 @@
      :attack-potential attack-potential
      :defense defense
      :defense-potential defense-potential
-     :power-play (rnd -0.1 -0.1)
-     :short-handed (rnd -0.1 -0.1)
+     :power-play (rnd -0.1 0.1)
+     :short-handed (rnd -0.1 0.1)
      :fitness 1
      :morale 1
      :status ::dressed}))

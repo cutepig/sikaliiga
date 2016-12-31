@@ -63,7 +63,7 @@
   ([attack defense]
     (shot? attack defense rand)))
 
-(def mean-block-probability 0.12)
+(def mean-block-probability (* 0.12 1))
 (defn blocked?
   ([attack defense rand]
     (< (rand)
@@ -71,7 +71,7 @@
   ([attack defense]
     (blocked? attack defense rand)))
 
-(def mean-miss-probability 0.34)
+(def mean-miss-probability (* 0.34 1))
 (defn missed?
   ([attack defense rand]
     (< (rand)
@@ -80,13 +80,37 @@
     (missed? attack defense rand)))
 
 ;; TODO: Factor in D to affect shot quality?
-(def mean-goal-probability 0.09)
+(def mean-goal-probability (* 0.09 1))
 (defn goal?
   ([attack goalie rand]
     (< (rand)
        (+ (* (- attack goalie) mean-goal-probability) mean-goal-probability)))
   ([attack goalie]
     (goal? attack goalie rand)))
+
+(def mean-minors-per-sec (/ 3.38 game-length))
+(defn minor?
+  ([rand]
+    (< (rand) mean-minors-per-sec))
+  ([]
+    (minor? rand)))
+
+(def mean-majors-per-sec (/ 0.18 game-length))
+(defn major?
+  ([rand]
+    (< (rand) mean-majors-per-sec))
+  ([]
+    (major? rand)))
+
+(def mean-match-penalties-per-sec (/ 0.09 game-length))
+(defn match-penalty?
+  ([rand]
+    (< (rand) mean-match-penalties-per-sec))
+  ([]
+    (match-penalty? rand)))
+
+(defn add-event [state & args]
+  (update-in state [:events] #(conj % (apply vector (first args) (:seconds state) (rest args)))))
 
 (defn add-posession [state match-team]
   (s/assert (s/cat :add-posession/state ::state :add-posession/match-team keyword?) [state match-team])
@@ -102,15 +126,17 @@
       (update-in [:teams winner-match-team :players winner-player-id :face-offs] inc)
       (update-in [:teams loser-match-team :players loser-player-id :face-offs] inc)
       (update-in [:teams winner-match-team :players winner-player-id :face-off-wins] inc)
-      ;; FIXME: whats wrong with (:seconds state), it shows 4, 3, 2, 1 for the face offs
-      (update :events #(conj % [:face-off (:seconds state) winner-player-id loser-player-id]))))
+      (add-event :face-off winner-player-id loser-player-id)))
 
 (defn add-shot [state match-team player-id]
   (s/assert (s/cat :add-shot/state ::state :add-shot/match-team keyword? :add-shot/player-id uuid?)
             [state match-team player-id])
-  (-> state
-      (update-in [:teams match-team :players player-id :shots] inc)
-      (update :events #(conj % [:shot (:seconds state) match-team player-id]))))
+  (let [type (cond (get-in state [:teams match-team :power-play?]) :power-play
+                   (get-in state [:teams match-team :short-handed?]) :short-handed
+                   :else nil)]
+    (-> state
+        (update-in [:teams match-team :players player-id :shots] inc)
+        (add-event :shot match-team player-id type))))
 
 (defn add-block [state blocking-match-team blocking-player-id blocked-match-team blocked-player-id]
   (s/assert (s/cat :add-block/state ::state :add-block/blocking-match-team keyword?
@@ -130,11 +156,14 @@
   (s/assert (s/cat :add-sog/state ::state :add-sog/sog-match-team keyword? :add-sog/shooter-id uuid?
                    :add-sog/sog-against-match-team keyword? :add-sog/goalie-id uuid?)
     [state sog-match-team shooter-id sog-against-match-team goalie-id])
-  (-> state
-      (update-in [:teams sog-match-team :players shooter-id :sog] inc)
-      ;; FIXME: goalie-id might be nil, this might effect stats calculation
-      (update-in [:teams sog-against-match-team :players goalie-id :sog-against] inc)
-      (update :events #(conj % [:sog (:seconds state) sog-match-team shooter-id sog-against-match-team goalie-id]))))
+  (let [type (cond (get-in state [:teams sog-match-team :power-play?]) :power-play
+                   (get-in state [:teams sog-match-team :short-handed?]) :short-handed
+                   :else nil)]
+    (-> state
+        (update-in [:teams sog-match-team :players shooter-id :sog] inc)
+        ;; FIXME: goalie-id might be nil, this might effect stats calculation
+        (update-in [:teams sog-against-match-team :players goalie-id :sog-against] inc)
+        (add-event :sog sog-match-team shooter-id sog-against-match-team goalie-id type))))
 
 ;; TODO: assists
 (defn add-goal [state goal-match-team shooter-id goal-against-match-team goalie-id]
@@ -142,11 +171,26 @@
                    :add-goal/shooter-id uuid? :add-goal/goal-against-match-team keyword?
                    :add-goal/goalie-id uuid?)
     [state goal-match-team shooter-id goal-against-match-team goalie-id])
+  (let [type (cond (get-in state [:teams goal-match-team :power-play?]) :power-play
+                   (get-in state [:teams goal-match-team :short-handed?]) :short-handed
+                   :else nil)]
+    (-> state
+        (update-in [:teams goal-match-team :goals] inc)
+        (update-in [:teams goal-against-match-team :goals-against] inc)
+        ;; FIXME: Doesn't seem to be getting through?
+        (update-in [:teams goal-match-team :players shooter-id :goals] inc)
+        ;; FIXME: goalie-id might be nil, this might effect stats calculation
+        (update-in [:teams goal-against-match-team :players goalie-id :goals-against] inc)
+        (add-event :goal goal-match-team shooter-id goal-against-match-team goalie-id type))))
+
+(defn add-penalty [state match-team player-id length]
+  (s/assert (s/cat :add-minor/state ::state :add-minor/match-team keyword?
+                   :add-minor/player-id :keyword?)
+            [state match-team player-id])
   (-> state
-      (update-in [:teams goal-match-team :players shooter-id :goals] inc)
-      ;; FIXME: goalie-id might be nil, this might effect stats calculation
-      (update-in [:teams goal-against-match-team :players goalie-id :goals-against] inc)
-      (update :events #(conj % [:goal (:seconds state) goal-match-team shooter-id goal-against-match-team goalie-id]))))
+      (assoc-in [:teams match-team :players player-id :status] ::player/penalty)
+      (update-in [:teams match-team :penalty-box] #(assoc % player-id {:time (:seconds state) :length length}))
+      (add-event :penalty match-team player-id length)))
 
 ;; Simulating the second should roughly be smth like this:
 ;; shift?
@@ -188,12 +232,14 @@
 (defonce opposing-match-team {:home :away :away :home})
 
 (defn power-play? [state team]
-  (let [other (opposing-match-team (:match-team team))]
-    (< (count (:penalty-box team)) (count (:penalty-box other)))))
+  (let [other (get-in state [:teams (opposing-match-team (:match-team team))])]
+    (< (min 2 (count (:penalty-box team)))
+       (min 2 (count (:penalty-box other))))))
 
 (defn short-handed? [state team]
-  (let [other (opposing-match-team (:match-team team))]
-    (> (count (:penalty-box team)) (count (:penalty-box other)))))
+  (let [other (get-in state [:teams (opposing-match-team (:match-team team))])]
+    (> (min 2 (count (:penalty-box team)))
+       (min 2 (count (:penalty-box other))))))
 
 (defn power-play-forwards? [team]
   (let [field-index (:current-field-forwards team)]
@@ -228,12 +274,27 @@
   (s/assert (s/cat :shift-forwards/state ::state :shift-forwards/team ::team) [state team])
   (cond
     ;; Always force shift to first field on period starts
+    ;; FIXME: But do check power-play? and short-handed?
     (util/period-start? (:seconds state))
       (shift-forwards* state team 0)
     ;; Never do shift is the team doesn't have posession
     ;; FIXME: Do some probability based rand here
     (not= (:posession state) (:match-team team))
       state
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:power-play? team) (not (power-play-forwards? team)))
+      ;; Power-play started, put on the first power-play field
+      (shift-forwards* state team 4)
+    (and (not (:power-play? team)) (power-play-forwards? team))
+      ;; Power-play ended, put on the first field
+      (shift-forwards* state team 0)
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:short-handed? team) (not (short-handed-forwards? team)))
+      ;; Short-hand situation started, put on the first short-handed field
+      (shift-forwards* state team 6)
+    (and (not (:short-handed? team)) (short-handed-forwards? team))
+      ;; Short-hand situation ended, put on the first field
+      (shift-forwards* state team 0)
     ;; TODO: Test
     ;; See if the time for current shift is past due
     (>= (:seconds state) (or (:next-shift-forwards team) 0))
@@ -244,14 +305,6 @@
                            (:short-handed? team) (util/mod-to-range next-raw-idx 6 7)
                            :else (util/mod-to-range next-raw-idx 0 3))]
         (shift-forwards* state team next-idx))
-    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
-    (and (:power-play? team) (not (power-play-forwards? team)))
-      ;; Power-play started, put on the first power-play field
-      (shift-forwards* state team 4)
-    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
-    (and (:short-handed? team) (not (short-handed-forwards? team)))
-      ;; Short-hand situation started, put on the first short-handed field
-      (shift-forwards* state team 6)
     :else state))
 
 (defn shift-defenders* [state team idx]
@@ -317,21 +370,24 @@
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-attack team %))
        (reduce + 0)
-       (#(/ % 5))))
+       (* (cond (:power-play? team) 1.5 (:short-handed? team) 0.75 :else 1))
+       (* 0.2)))
 
 (defn calculate-field-defense [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-defense team %))
        (reduce + 0)
-       (#(/ % 5))))
+       (* (cond (:power-play? team) 1.5 (:short-handed? team) 0.75 :else 1))
+       (* 0.2)))
 
 (defn calculate-field-skill [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-skill team %))
        (reduce + 0)
-       (#(/ % 5))))
+       (* (cond (:power-play? team) 1.5 (:short-handed? team) 0.75 :else 1))
+       (* 0.25)))
 
 (defn calculate-field-goalie [team field]
   (or (:defense (get-in team [:players (first field)])) 0))
@@ -397,8 +453,20 @@
       (simulate-face-off state)
       (simulate-posession* state)))
 
+(defn get-penalty-sitter [team field]
+  (s/assert (s/cat :get-shooter/team ::team :get-shooter/field ::field/field) [team field])
+  ;; FIXME: Bias with character and defense attributes
+  (get-in team [:players (util/rnd-nth (field/get-players field))]))
+
 (defn simulate-penalties* [state team]
-  state)
+  (s/assert (s/cat :simulate-penalties*/state ::state :simulate-penalties*/team ::team) [state team])
+  (cond
+    (minor?) (add-penalty state (:match-team team) (:id (get-penalty-sitter team (:field team))) 120)
+    (major?) (add-penalty state (:match-team team) (:id (get-penalty-sitter team (:field team))) 300)
+    ;; Used to test pp/sh fields
+    ; (and (= :home (:match-team team)) (= 3550 (:seconds state)))
+    ;  (add-penalty state (:match-team team) (:id (get-penalty-sitter team (:field team))) 120)
+    :else state))
 
 (defn simulate-penalties [state]
   (-> state
@@ -586,3 +654,15 @@
 (def team-b (team/make-test-team 55 80))
 
 (def state (prepare-state team-a team-b))
+
+(defn team-stats [state team]
+  {:shots (count (filter #(and (= :shot (first %)) (= team (nth % 2))) (:events state)))
+   :sog (count (filter #(and (= :sog (first %)) (= team (nth % 2))) (:events state)))
+   :goals (count (filter #(and (= :goal (first %)) (= team (nth % 2))) (:events state)))
+   :penalties (count (filter #(and (= :penalty (first %)) (= team (nth % 2))) (:events state)))
+   :power-play-shots (count (filter #(and (= :shot (first %)) (= :power-play (last %)) (= team (nth % 2))) (:events state)))
+   :power-play-sog (count (filter #(and (= :sog (first %)) (= :power-play (last %)) (= team (nth % 2))) (:events state)))
+   :power-play-goals (count (filter #(and (= :goal (first %)) (= :power-play (last %)) (= team (nth % 2))) (:events state)))
+   :short-handed-shots (count (filter #(and (= :shot (first %)) (= :short-handed (last %)) (= team (nth % 2))) (:events state)))
+   :short-handed-sog (count (filter #(and (= :sog (first %)) (= :short-handed (last %)) (= team (nth % 2))) (:events state)))
+   :short-handed-goals (count (filter #(and (= :goal (first %)) (= :short-handed (last %)) (= team (nth % 2))) (:events state)))})
