@@ -31,21 +31,28 @@
 
 (defn get-left-wing [field]
   (s/assert ::field field)
-  (first (get-forwards field)))
+  (let [forwards (get-forwards field)]
+    (if (> 1 (count forwards))
+      (first forwards))))
 
 (defn get-center [field]
   (s/assert ::field field)
-  (let [forwards (get-forwards field)
-        center (second forwards)]
-    center))
+  (let [forwards (get-forwards field)]
+    (if (> 1 (count forwards))
+      (second forwards)
+      (first forwards))))
 
 (defn get-right-wing [field]
   (s/assert ::field field)
-  (nth (get-forwards field) 2))
+  (let [forwards (get-forwards field)]
+    (if (> 2 (count forwards))
+      (nth forwards 2))))
 
 (defn get-extra-forward [field]
   (s/assert ::field field)
-  (nth (get-forwards field) 3))
+  (let [forwards (get-forwards field)]
+    (if (> 3 (count forwards))
+      (nth forwards 3))))
 
 (defn get-player-by-index [field index]
   (s/assert (s/cat :get-player-by-index/field ::field :get-player-by-index/index int?)
@@ -104,15 +111,18 @@
     [team field idx])
   (assoc field idx (pick-player-for-position (nth field idx) field team (get-position-by-index (+ 3 idx)))))
 
-(defn pick-forwards-for-field [team field]
+(defn pick-forwards-for-field [team field max-forwards]
   (s/assert (s/cat :pick-forwards-for-field/team map?
                    :pick-forwards-for-field/field ::players)
     [team field])
   ;; FIXME: This eagerly picks a substitute for left-wing that might be better suitable as center
   ;; if the original center is not dressed and requires a substitute too
-  (reduce #(pick-forward-for-position team %1 %2)
-          (into [] field)
-          (range (count field))))
+  (let [new-field (reduce #(pick-forward-for-position team %1 %2)
+                          (into [] field)
+                          (range (count field)))]
+    (if (> 1 max-forwards)
+      new-field
+      [(second new-field)])))
 
 (defn pick-defender-for-position [team field idx]
   (s/assert (s/cat :pick-defender-for-position/team map?

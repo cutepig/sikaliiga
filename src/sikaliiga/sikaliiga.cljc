@@ -261,12 +261,13 @@
   (s/assert (s/cat :shift-forwards*/state ::state :shift-forwards*/team ::team :shift-forwards*/idx int?)
     [state team idx])
   (let [match-team (:match-team team)
-        field (get-in team [:fields :forwards idx])]
+        field (get-in team [:fields :forwards idx])
+        max-forwards (max 1 (- 3 (count (:penalty-box team))))]
     (s/assert (s/cat :shift-forwards*/match-team keyword? :shift-fowards*/field ::team/field)
       [match-team field])
     (-> state
         ;; TODO: Reset on-ice? for players in old field and set it for the new field
-        (assoc-in [:teams match-team :field 2] (field/pick-forwards-for-field team (:players field)))
+        (assoc-in [:teams match-team :field 2] (field/pick-forwards-for-field team (:players field) max-forwards))
         (assoc-in [:teams match-team :current-field-forwards] idx)
         (assoc-in [:teams match-team :next-shift-forwards] (+ (:seconds state) (:shift-length field))))))
 
@@ -365,12 +366,18 @@
 ;; one player less than the other and skills are probably biased towards A and D
 ;; respectively. We should include PP and SH in calculating posession and shot
 ;; probabilities
+
+(def power-play-multiplier (* 2.0 1))
+(def short-handed-multiplier (* 0.5 1))
+
 (defn calculate-field-attack [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-attack team %))
        (reduce + 0)
-       (* (cond (:power-play? team) 1.5 (:short-handed? team) 0.75 :else 1))
+       (* (cond (:power-play? team) power-play-multiplier
+                (:short-handed? team) short-handed-multiplier
+                :else 1))
        (* 0.2)))
 
 (defn calculate-field-defense [team field]
@@ -378,7 +385,9 @@
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-defense team %))
        (reduce + 0)
-       (* (cond (:power-play? team) 1.5 (:short-handed? team) 0.75 :else 1))
+       (* (cond (:power-play? team) power-play-multiplier
+                (:short-handed? team) short-handed-multiplier
+                :else 1))
        (* 0.2)))
 
 (defn calculate-field-skill [team field]
@@ -386,8 +395,10 @@
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-skill team %))
        (reduce + 0)
-       (* (cond (:power-play? team) 1.5 (:short-handed? team) 0.75 :else 1))
-       (* 0.25)))
+       (* (cond (:power-play? team) power-play-multiplier
+                (:short-handed? team) short-handed-multiplier
+                :else 1))
+       (* 0.2)))
 
 (defn calculate-field-goalie [team field]
   (or (:defense (get-in team [:players (first field)])) 0))
@@ -431,7 +442,9 @@
       [team-a team-b center-a center-b])
     ;; TODO: Should be affected by whole skill of centers, attack + defense
     ;; TODO: If we use a face-off flag from previous second, reset that flag.
-    (if (< (player/calculate-match-skill team-a center-a) (rand (+ (player/calculate-match-skill team-a center-a) (player/calculate-match-skill team-b center-b))))
+    (if (< (rand (+ (player/calculate-match-skill team-a center-a)
+                    (player/calculate-match-skill team-b center-b)))
+           (player/calculate-match-skill team-a center-a))
         (add-face-off state :home (:id center-a) :away (:id center-b))
         (add-face-off state :away (:id center-b) :home (:id center-a)))))
 
@@ -443,7 +456,7 @@
   (s/assert map? state)
   (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))
         skill-b (calculate-field-skill (get-in state [:teams :away]) (get-in state [:teams :away :field]))]
-    (if (< skill-a (rand (+ skill-a skill-b)))
+    (if (< (rand (+ skill-a skill-b)) skill-a)
       (add-posession state :home)
       (add-posession state :away))))
 
@@ -642,7 +655,6 @@
            :away (prepare-team :away away)}
    :events []})
 
-;; Team looked like this:
 (defn simulate-game [home away]
   (let [state (prepare-state home away)
         seconds (range 3600)
