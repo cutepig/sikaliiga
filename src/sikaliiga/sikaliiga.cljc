@@ -427,15 +427,18 @@
 
 (def mean-face-offs-per-sec (/ 30 game-length))
 
-(defn face-off? [state]
-  (s/assert map? state)
-  ;; TODO: In addition to this, face-off should be flagged on previous second
-  ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
-  ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
-  (or (util/period-start? (:seconds state))
-      (= (get-in state [:teams :home :last-goal]) (dec (:seconds state)))
-      (= (get-in state [:teams :away :last-goal]) (dec (:seconds state)))
-      (< (rand) mean-face-offs-per-sec)))
+(defn face-off?
+  ([state rand]
+    (s/assert map? state)
+    ;; TODO: In addition to this, face-off should be flagged on previous second
+    ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
+    ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
+    (or (util/period-start? (:seconds state))
+        (= (get-in state [:teams :home :last-goal]) (dec (:seconds state)))
+        (= (get-in state [:teams :away :last-goal]) (dec (:seconds state)))
+        (< (rand) mean-face-offs-per-sec)))
+  ([state]
+    (face-off? state rand)))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]

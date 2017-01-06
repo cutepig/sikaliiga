@@ -49,16 +49,17 @@
       (should (sikaliiga/face-off? {:seconds 3600})))
 
   (it "returns false when not in the beginning of periods"
-      (should (not-any? #(sikaliiga/face-off? {:seconds %}) (range 1 1200)))
-      (should (not-any? #(sikaliiga/face-off? {:seconds %}) (range 1201 2400)))
-      (should (not-any? #(sikaliiga/face-off? {:seconds %}) (range 2401 3600)))
-      (should (not-any? #(sikaliiga/face-off? {:seconds %}) (range 3601 3900))))
+      (should (not-any? #(sikaliiga/face-off? {:seconds %} (constantly 1)) (range 1 1200)))
+      (should (not-any? #(sikaliiga/face-off? {:seconds %} (constantly 1)) (range 1201 2400)))
+      (should (not-any? #(sikaliiga/face-off? {:seconds %} (constantly 1)) (range 2401 3600)))
+      (should (not-any? #(sikaliiga/face-off? {:seconds %} (constantly 1)) (range 3601 3900))))
 
-  (it "returns true when :face-off? is set in state"
-      (should (sikaliiga/face-off? {:face-off? true})))
+  (it "returns true when :last-goal is second before for either team"
+      (should (sikaliiga/face-off? {:seconds 1234 :teams {:home {:last-goal 1233}}} (constantly 1)))
+      (should (sikaliiga/face-off? {:seconds 1234 :teams {:away {:last-goal 1233}}} (constantly 1))))
 
-  (it "returns false when :face-off? is not set in state"
-      (should-not (sikaliiga/face-off? {:face-off? false}))))
+  (it "returns true when rand is less than mean-face-offs-per-sec"
+      (should (sikaliiga/face-off? {:seconds 1234} (constantly 0)))))
 
 (describe
   "add-face-off"
