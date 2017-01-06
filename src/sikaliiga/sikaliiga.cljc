@@ -135,6 +135,7 @@
                    (get-in state [:teams match-team :short-handed?]) :short-handed
                    :else nil)]
     (-> state
+        (assoc-in [:teams match-team :last-shot] (:seconds state))
         (update-in [:teams match-team :players player-id :shots] inc)
         (add-event :shot match-team player-id type))))
 
@@ -175,6 +176,7 @@
                    (get-in state [:teams goal-match-team :short-handed?]) :short-handed
                    :else nil)]
     (-> state
+        (assoc-in [:teams goal-match-team :last-goal] (:seconds state))
         (update-in [:teams goal-match-team :goals] inc)
         (update-in [:teams goal-against-match-team :goals-against] inc)
         ;; FIXME: Doesn't seem to be getting through?
@@ -367,8 +369,9 @@
 ;; respectively. We should include PP and SH in calculating posession and shot
 ;; probabilities
 
-(def power-play-multiplier (* 2.0 1))
-(def short-handed-multiplier (* 0.5 1))
+;; FIXME: These are totally arbitrary
+(def power-play-multiplier (/ 1.25 1))
+(def short-handed-multiplier (/ 1 1.25))
 
 (defn calculate-field-attack [team field]
   (->> (field/get-players field)
@@ -422,17 +425,20 @@
            (shift-goalie (get-in state [:teams :away])))
        (s/assert map?)))
 
+(def mean-face-offs-per-sec (/ 30 game-length))
+
 (defn face-off? [state]
   (s/assert map? state)
   ;; TODO: In addition to this, face-off should be flagged on previous second
   ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
   ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
   (or (util/period-start? (:seconds state))
-      (:face-off? state)))
+      (= (get-in state [:teams :home :last-goal]) (dec (:seconds state)))
+      (= (get-in state [:teams :away :last-goal]) (dec (:seconds state)))
+      (< (rand) mean-face-offs-per-sec)))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
-  ; (println "simulate-face-off" (get-in state [:teams :home :field]))
   (s/assert map? state)
   (let [team-a (get-in state [:teams :home])
         team-b (get-in state [:teams :away])
@@ -454,8 +460,13 @@
 ;; Ane also if team performed a shift this second there is a smaller chance to gain posession
 (defn simulate-posession* [state]
   (s/assert map? state)
-  (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))
-        skill-b (calculate-field-skill (get-in state [:teams :away]) (get-in state [:teams :away :field]))]
+  (let [[multiplier-a multiplier-b] (cond (nil? (:posession state)) [1 1]
+                                          (= :home (:posession state)) [2 0.5]
+                                          :else [0.5 2])
+        skill-a (* multiplier-a (calculate-field-skill (get-in state [:teams :home])
+                                                       (get-in state [:teams :home :field])))
+        skill-b (* multiplier-b (calculate-field-skill (get-in state [:teams :away])
+                                                       (get-in state [:teams :away :field])))]
     (if (< (rand (+ skill-a skill-b)) skill-a)
       (add-posession state :home)
       (add-posession state :away))))
@@ -508,6 +519,7 @@
   (s/assert map? state)
   (get-in state [:teams (get-non-posession state)]))
 
+;; TODO: Should PP and SH affect goal probability?
 (defn simulate-goal [state shooter attacking-team defending-team]
   (s/assert (s/cat :simulate-goal/state ::state :simulate-goal/shooter ::player
                    :simulate-goal/attacking-team ::team :simulate-goal/defending-team ::team)
@@ -526,6 +538,7 @@
         (add-miss state (:match-team attacking-team) (:id shooter))
         (simulate-goal state shooter attacking-team defending-team))))
 
+;; TODO: Should PP and SH affect block probability?
 (defn simulate-block [state shooter attacking-team defending-team]
   (s/assert (s/cat :state ::state :shooter ::player :attacking-team ::team :defending-team ::team) [state shooter attacking-team defending-team])
   (let [blocker (get-blocker defending-team (:field defending-team))]
@@ -547,7 +560,8 @@
         defending-team (get-in state [:teams (get-non-posession state)])
         attack (calculate-field-attack attacking-team (:field attacking-team))
         defense (calculate-field-defense defending-team (:field defending-team))]
-    (if (shot? attack defense)
+    (if (and (< (+ 5 (:last-shot defending-team)) (:seconds state))
+             (shot? attack defense))
       (simulate-shot* state attacking-team defending-team)
       state)))
 
