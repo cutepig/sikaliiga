@@ -113,14 +113,15 @@
 
 (defn pick-forwards-for-field [team field max-forwards]
   (s/assert (s/cat :pick-forwards-for-field/team map?
-                   :pick-forwards-for-field/field ::players)
-    [team field])
+                   :pick-forwards-for-field/field ::players
+                   :pick-forwards-for-field/max-forwards integer?)
+    [team field max-forwards])
   ;; FIXME: This eagerly picks a substitute for left-wing that might be better suitable as center
   ;; if the original center is not dressed and requires a substitute too
   (let [new-field (reduce #(pick-forward-for-position team %1 %2)
                           (into [] field)
                           (range (count field)))]
-    (if (> 1 max-forwards)
+    (if (> max-forwards 1)
       new-field
       [(second new-field)])))
 
