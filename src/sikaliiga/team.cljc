@@ -63,8 +63,9 @@
                  {:index 6 :shift-length 50 :players (auto-defenders-nth defenders 1)}]
      :goalies (auto-goalies goalies)}))
 
-(defn make-test-team [min-skill max-skill]
+(defn make-test-team [name min-skill max-skill]
   (let [players [(player/make-player :position ::player/goalie :min-skill min-skill :max-skill max-skill)
+                 (player/make-player :position ::player/goalie :min-skill min-skill :max-skill max-skill)
 
                  (player/make-player :position ::player/defense :min-skill min-skill :max-skill max-skill)
                  (player/make-player :position ::player/defense :min-skill min-skill :max-skill max-skill)
@@ -89,8 +90,7 @@
                  (player/make-player :position ::player/right-wing :min-skill min-skill :max-skill max-skill)]
 
         team {:id (make-uuid)
-              :name (str "Test team (" min-skill " - " max-skill ")")
-              ;; FIXME: Should players be stored by id?
+              :name name
               :players (key-by :id players)}]
 
     ;; Assign fields automatically

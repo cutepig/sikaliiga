@@ -75,11 +75,11 @@
 
 (defn compare-substitute
   [[best best-value] candidate position team]
-    (let [candidate-value (calculate-substitute-value candidate position team)]
-       (cond
-            (nil? best) [candidate candidate-value]
-            (> (or candidate-value 0) (or best-value 0)) [candidate candidate-value]
-            :else [best best-value])))
+  (let [candidate-value (calculate-substitute-value candidate position team)]
+     (cond
+          (nil? best) [candidate candidate-value]
+          (> (or candidate-value 0) (or best-value 0)) [candidate candidate-value]
+          :else [best best-value])))
 
 (defn pick-substitute [candidates position team]
   (->> candidates

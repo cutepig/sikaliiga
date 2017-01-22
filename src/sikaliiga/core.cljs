@@ -1,23 +1,15 @@
 (ns sikaliiga.core
   (:require [reagent.core :as reagent :refer [atom]]
-            [sikaliiga.sikaliiga :as sikaliiga]))
+            [sikaliiga.ui.core :as ui]))
 
 (enable-console-print!)
 
 (println "This text is printed from src/sikaliiga/core.cljs. Go ahead and edit it and see reloading in action.")
 
-;; define your app data so that it doesn't get over-written on reload
-
-(defonce app-state (atom {:text "Hello world!"}))
-
-(defn hello-world []
-  [:h1 (:text @app-state)])
-
-(reagent/render-component [hello-world]
+(reagent/render-component [ui/app-view ui/app-state]
                           (. js/document (getElementById "app")))
 
 (defn on-js-reload []
-  ;; optionally touch your app-state to force rerendering depending on
-  ;; your application
-  ;; (swap! app-state update-in [:__figwheel_counter] inc)
-)
+  ; optionally touch your app-state to force rerendering depending on
+  ; your application
+  (swap! ui/app-state update-in [:__figwheel_counter] inc))

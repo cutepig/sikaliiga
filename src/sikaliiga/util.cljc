@@ -1,5 +1,6 @@
 (ns sikaliiga.util
-  )
+  #?(:cljs
+     (:import goog.string.format)))
 
 (defn rnd [min max] (+ (rand (- max min)) min))
 ;; Random int from min (inclusive) to max (exclusive!)
@@ -18,16 +19,16 @@
   (into {} (map #(vector (first %) (f (second %))) coll)))
 
 #?(:clj
-  (defn make-uuid []
-    (java.util.UUID/randomUUID))
-  :cljs
-  (defn make-uuid []
-    (random-uuid)))
-
-(defn period-start? [seconds]
-  (some? (#{0 1200 2400 3600} seconds)))
+   (defn make-uuid []
+     (java.util.UUID/randomUUID))
+   :cljs
+   (defn make-uuid []
+     (random-uuid)))
 
 (defn mod-to-range
   "mod n so that min <= n <= max"
   [n min max]
   (+ min (mod (- n min) (- (inc max) min))))
+
+(defn str-left-pad-num [count num]
+  (format (str "%0" count "d") num))

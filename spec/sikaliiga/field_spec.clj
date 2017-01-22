@@ -8,7 +8,7 @@
 
 (s/check-asserts true)
 
-(def team (team/make-test-team 50 75))
+(def team (team/make-test-team "Team" 50 75))
 
 (describe
   "get-player-by-index"
@@ -51,29 +51,29 @@
           (let [candidate (player/make-test-player nil 0.0 0.75 ::player/center ::player/dressed)]
             (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/center {}))))))
 
-    (describe
-      "when requested position is a winger"
-      (let [best (player/make-test-player nil 0.5 0 ::player/left-wing nil)]
-        (describe
-          "favors attack over defense or overall skill"
-          (it "when candidate is a forward with higher defense but lesser overall skill"
-              (let [candidate (player/make-test-player nil 0.25 1 ::player/left-wing ::player/dressed)]
-                (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/left-wing {}))))
-          (it "when candidate is a defender with higher attack"
-              (let [candidate (player/make-test-player nil 0.75 0 ::player/defense ::player/dressed)]
-                (should= [candidate 0.75] (field/compare-substitute [best 0.5] candidate ::player/left-wing {})))))))
+  (describe
+    "when requested position is a winger"
+    (let [best (player/make-test-player nil 0.5 0 ::player/left-wing nil)]
+      (describe
+        "favors attack over defense or overall skill"
+        (it "when candidate is a forward with higher defense but lesser overall skill"
+            (let [candidate (player/make-test-player nil 0.25 1 ::player/left-wing ::player/dressed)]
+              (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/left-wing {}))))
+        (it "when candidate is a defender with higher attack"
+            (let [candidate (player/make-test-player nil 0.75 0 ::player/defense ::player/dressed)]
+              (should= [candidate 0.75] (field/compare-substitute [best 0.5] candidate ::player/left-wing {})))))))
 
-    (describe
-      "when requested position is defender"
-      (let [best (player/make-test-player nil 0.5 0.5 ::player/defense ::player/dressed)]
-        (describe
-          "favors defense over attack or overall skill"
-          (it "when candidate is a defender with higher attack but lesser overall skill"
-              (let [candidate (player/make-test-player nil 0.75 0 ::player/defense ::player/dressed)]
-                (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/defense {}))))
-          (it "when candidate is a forward with higher defense"
-              (let [candidate (player/make-test-player nil 0 0.75 ::player/center ::player/dressed)]
-                (should= [candidate 0.75] (field/compare-substitute [best 0.5] candidate ::player/defense {}))))))))
+  (describe
+    "when requested position is defender"
+    (let [best (player/make-test-player nil 0.5 0.5 ::player/defense ::player/dressed)]
+      (describe
+        "favors defense over attack or overall skill"
+        (it "when candidate is a defender with higher attack but lesser overall skill"
+            (let [candidate (player/make-test-player nil 0.75 0 ::player/defense ::player/dressed)]
+              (should= [best 0.5] (field/compare-substitute [best 0.5] candidate ::player/defense {}))))
+        (it "when candidate is a forward with higher defense"
+            (let [candidate (player/make-test-player nil 0 0.75 ::player/center ::player/dressed)]
+              (should= [candidate 0.75] (field/compare-substitute [best 0.5] candidate ::player/defense {}))))))))
 
 (describe
   "collect-substitute-candidates"

@@ -1,6 +1,7 @@
 (ns sikaliiga.player
   (:require [clojure.spec :as s]
-            [sikaliiga.util :refer [make-uuid rnd irnd]]))
+            [sikaliiga.util :refer [make-uuid rnd irnd]]
+            [sikaliiga.names-dict :refer [first-names last-names]]))
 
 ;; Spec
 (s/def ::id uuid?)
@@ -25,10 +26,8 @@
 
 ;;
 ;; Player creation
-(def names-dict {:fi {:first-names
-                      ["Antti" "Juha" "Keijo" "Matti" "Teppo" "Teemu"]
-                      :last-names
-                      ["Nieminen" "Toivonen" "Aaltonen" "Keinänen" "Pasanen" "Peltonen"]}
+(def names-dict {:fi {:first-names first-names
+                      :last-names last-names}
                  :us {:first-names
                       ["Andrew" "Matthew" "Tony" "Matt" "John" "Taylor" "Corey"]
                       :last-names
@@ -69,7 +68,7 @@
   (contains? #{::left-wing ::center ::right-wing} pos))
 
 (defn defense-position? [pos]
-  (= pos ::defense ))
+  (= pos ::defense))
 
 (defn goalie-position? [pos]
   (= pos ::goalie))
