@@ -583,6 +583,7 @@
       (update-in [:teams match-team :penalty-box] dissoc player-id)))
 
 (defn simulate-penalty-release* [state team]
+  ;; TODO: Release oldest minor penalty if opposing team made a goal second before and this team is short-handed
   (let [released (filter #(>= (:seconds state) (+ (:time (second %)) (:length (second %))))
                          (:penalty-box team))]
     (reduce #(release-penalty-sitter %1 (:match-team team) (first %2)) state released)))
