@@ -126,7 +126,7 @@
             right-wing (player/make-test-player (util/make-uuid) 1 1 ::player/right-wing ::player/dressed)
             team (assoc team :players {(:id left-wing) left-wing (:id center) center (:id right-wing) right-wing})
             field [(:id left-wing) (:id center) (:id right-wing)]]
-        (should= field (field/pick-forwards-for-field team field))))
+        (should= field (field/pick-forwards-for-field team field 3))))
 
   (it "returns field of nils when none of the players on it are dressed"
       (let [left-wing (player/make-test-player (util/make-uuid) 1 1 ::player/left-wing ::player/injured)
@@ -134,7 +134,7 @@
             right-wing (player/make-test-player (util/make-uuid) 1 1 ::player/right-wing ::player/injured)
             team (assoc team :players (util/key-by :id [left-wing center right-wing]))
             field [(:id left-wing) (:id center) (:id right-wing)]]
-        (should= [nil nil nil] (field/pick-forwards-for-field team field))))
+        (should= [nil nil nil] (field/pick-forwards-for-field team field 3))))
 
   (it "returns populated field from field of nils"
       (let [left-wing (player/make-test-player (util/make-uuid) 1 1 ::player/left-wing ::player/dressed)
@@ -143,7 +143,7 @@
             team (assoc team :players (util/key-by :id [left-wing center right-wing]))
             field [nil nil nil]]
         (should= [(:id left-wing) (:id center) (:id right-wing)]
-                 (field/pick-forwards-for-field team field))))
+                 (field/pick-forwards-for-field team field 3))))
 
   (it "returns original field with extra attacker when all players on it are dressed"
       (pending "TODO"))

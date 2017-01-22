@@ -25,12 +25,12 @@
    [(:id (nth left-wings n)) (:id (nth centers n)) (:id (nth right-wings n))]])
 
 (defn auto-forwards-nth [left-wings centers right-wings n]
-  (if-not (nil? right-wings)
+  (if (some? right-wings)
     [(:id (nth left-wings n)) (:id (nth centers n)) (:id (nth right-wings n))]
     [(:id (nth left-wings n)) (:id (nth centers n))]))
 
 (defn auto-defenders-nth [defenders n]
-  (map :id (take 2 (drop (* 2 n) defenders))))
+  (vec (map :id (take 2 (drop (* 2 n) defenders)))))
 
 (defn auto-goalies [goalies]
   (map :id (take 2 goalies)))
@@ -40,8 +40,10 @@
         goalies (->> players (filter player/goalie?) (sort-by :defense) reverse)
         defenders (->> players (filter player/defender?) (sort-by :defense) reverse)
         left-wings (->> players (filter player/left-wing?) (sort-by :attack) reverse)
-        centers (->> players (filter player/center?) (sort-by :attack) reverse)
-        right-wings (->> players (filter player/right-wing?) (sort-by :attack) reverse)]
+        centers (->> players (filter player/center?) (sort-by #(+ (:attack %) (:defense %))) reverse)
+        right-wings (->> players (filter player/right-wing?) (sort-by :attack) reverse)
+        pp-defenders (->> players (filter player/defender?) (sort-by :attack) reverse)
+        sh-left-wings (->> players (filter player/left-wing?) (sort-by :defense) reverse)]
     {:forwards [{:index 0 :shift-length 40 :players (auto-forwards-nth left-wings centers right-wings 0)}
                 {:index 1 :shift-length 30 :players (auto-forwards-nth left-wings centers right-wings 1)}
                 {:index 2 :shift-length 20 :players (auto-forwards-nth left-wings centers right-wings 2)}
@@ -50,15 +52,15 @@
                 {:index 4 :shift-length 60 :players (auto-forwards-nth left-wings centers right-wings 0)}
                 {:index 5 :shift-length 40 :players (auto-forwards-nth left-wings centers right-wings 1)}
                 ;; TODO: short-handed specific attributes
-                {:index 6 :shift-length 60 :players (auto-forwards-nth left-wings centers nil 0)}
-                {:index 7 :shift-length 40 :players (auto-forwards-nth left-wings centers nil 1)}]
+                {:index 6 :shift-length 60 :players (auto-forwards-nth sh-left-wings centers nil 0)}
+                {:index 7 :shift-length 40 :players (auto-forwards-nth sh-left-wings centers nil 1)}]
      :defenders [{:index 0 :shift-length 50 :players (auto-defenders-nth defenders 0)}
-                 {:index 1 :shift-length 40 :players (auto-defenders-nth defenders 0)}
-                 {:index 2 :shift-length 30 :players (auto-defenders-nth defenders 0)}
+                 {:index 1 :shift-length 40 :players (auto-defenders-nth defenders 1)}
+                 {:index 2 :shift-length 30 :players (auto-defenders-nth defenders 2)}
                  {:index 3 :shift-length 70 :players (auto-defenders-nth defenders 0)}
-                 {:index 4 :shift-length 50 :players (auto-defenders-nth defenders 0)}
+                 {:index 4 :shift-length 50 :players (auto-defenders-nth defenders 1)}
                  {:index 5 :shift-length 70 :players (auto-defenders-nth defenders 0)}
-                 {:index 6 :shift-length 50 :players (auto-defenders-nth defenders 0)}]
+                 {:index 6 :shift-length 50 :players (auto-defenders-nth defenders 1)}]
      :goalies (auto-goalies goalies)}))
 
 (defn make-test-team [min-skill max-skill]

@@ -22,18 +22,29 @@
 (s/def :team/field ::field/field)
 (s/def :team/players (s/map-of uuid? ::player))
 (s/def :team/match-team #{:home :away})
+(s/def :team/current-field-forwards (s/nilable integer?))
+(s/def :team/current-field-defenders (s/nilable integer?))
+(s/def :team/power-play? boolean?)
+(s/def :team/short-handed? boolean?)
+
+(s/def :penalty-sitter/time integer?)
+(s/def :penalty-sitter/length integer?)
+(s/def :team/penalty-sitter (s/keys :req-un [:penalty-sitter/time :penalty-sitter/length]))
+(s/def :team/penalty-box (s/map-of ::player/id :team/penalty-sitter))
 
 (s/def ::team (s/merge ::team/team
                        (s/keys :req-un [:team/field :team/players :team/match-team
-                                        :team/current-field-forwards :team/current-field-defenders])))
+                                        :team/current-field-forwards :team/current-field-defenders]
+                               :opt-un [:team/power-play? :team/short-handed?])))
 
 (s/def ::seconds integer?)
 (s/def ::posession keyword?)
+(s/def ::overtime boolean?)
 (s/def ::home ::team)
 (s/def ::away ::team)
 (s/def ::teams (s/keys :req-un [::home ::away]))
 (s/def ::state (s/keys :req-un [::seconds ::teams]
-                       :opt-un [::posession]))
+                       :opt-un [::posession ::overtime]))
 
 ;;
 ;; Simulation functions
@@ -52,7 +63,7 @@
   ([attack defense]
     (shot? attack defense rand)))
 
-(def mean-block-probability 0.12)
+(def mean-block-probability (* 0.12 1))
 (defn blocked?
   ([attack defense rand]
     (< (rand)
@@ -60,7 +71,7 @@
   ([attack defense]
     (blocked? attack defense rand)))
 
-(def mean-miss-probability 0.34)
+(def mean-miss-probability (* 0.34 1))
 (defn missed?
   ([attack defense rand]
     (< (rand)
@@ -69,13 +80,37 @@
     (missed? attack defense rand)))
 
 ;; TODO: Factor in D to affect shot quality?
-(def mean-goal-probability 0.09)
+(def mean-goal-probability (* 0.09 1))
 (defn goal?
   ([attack goalie rand]
     (< (rand)
        (+ (* (- attack goalie) mean-goal-probability) mean-goal-probability)))
   ([attack goalie]
     (goal? attack goalie rand)))
+
+(def mean-minors-per-sec (/ 3.38 game-length))
+(defn minor?
+  ([rand]
+    (< (rand) mean-minors-per-sec))
+  ([]
+    (minor? rand)))
+
+(def mean-majors-per-sec (/ 0.18 game-length))
+(defn major?
+  ([rand]
+    (< (rand) mean-majors-per-sec))
+  ([]
+    (major? rand)))
+
+(def mean-match-penalties-per-sec (/ 0.09 game-length))
+(defn match-penalty?
+  ([rand]
+    (< (rand) mean-match-penalties-per-sec))
+  ([]
+    (match-penalty? rand)))
+
+(defn add-event [state & args]
+  (update-in state [:events] #(conj % (apply vector (first args) (:seconds state) (rest args)))))
 
 (defn add-posession [state match-team]
   (s/assert (s/cat :add-posession/state ::state :add-posession/match-team keyword?) [state match-team])
@@ -91,15 +126,18 @@
       (update-in [:teams winner-match-team :players winner-player-id :face-offs] inc)
       (update-in [:teams loser-match-team :players loser-player-id :face-offs] inc)
       (update-in [:teams winner-match-team :players winner-player-id :face-off-wins] inc)
-      ;; FIXME: whats wrong with (:seconds state), it shows 4, 3, 2, 1 for the face offs
-      (update :events #(conj % [:face-off (:seconds state) winner-player-id loser-player-id]))))
+      (add-event :face-off winner-player-id loser-player-id)))
 
 (defn add-shot [state match-team player-id]
   (s/assert (s/cat :add-shot/state ::state :add-shot/match-team keyword? :add-shot/player-id uuid?)
             [state match-team player-id])
-  (-> state
-      (update-in [:teams match-team :players player-id :shots] inc)
-      (update :events #(conj % [:shot (:seconds state) match-team player-id]))))
+  (let [type (cond (get-in state [:teams match-team :power-play?]) :power-play
+                   (get-in state [:teams match-team :short-handed?]) :short-handed
+                   :else nil)]
+    (-> state
+        (assoc-in [:teams match-team :last-shot] (:seconds state))
+        (update-in [:teams match-team :players player-id :shots] inc)
+        (add-event :shot match-team player-id type))))
 
 (defn add-block [state blocking-match-team blocking-player-id blocked-match-team blocked-player-id]
   (s/assert (s/cat :add-block/state ::state :add-block/blocking-match-team keyword?
@@ -119,11 +157,14 @@
   (s/assert (s/cat :add-sog/state ::state :add-sog/sog-match-team keyword? :add-sog/shooter-id uuid?
                    :add-sog/sog-against-match-team keyword? :add-sog/goalie-id uuid?)
     [state sog-match-team shooter-id sog-against-match-team goalie-id])
-  (-> state
-      (update-in [:teams sog-match-team :players shooter-id :sog] inc)
-      ;; FIXME: goalie-id might be nil, this might effect stats calculation
-      (update-in [:teams sog-against-match-team :players goalie-id :sog-against] inc)
-      (update :events #(conj % [:sog (:seconds state) sog-match-team shooter-id sog-against-match-team goalie-id]))))
+  (let [type (cond (get-in state [:teams sog-match-team :power-play?]) :power-play
+                   (get-in state [:teams sog-match-team :short-handed?]) :short-handed
+                   :else nil)]
+    (-> state
+        (update-in [:teams sog-match-team :players shooter-id :sog] inc)
+        ;; FIXME: goalie-id might be nil, this might effect stats calculation
+        (update-in [:teams sog-against-match-team :players goalie-id :sog-against] inc)
+        (add-event :sog sog-match-team shooter-id sog-against-match-team goalie-id type))))
 
 ;; TODO: assists
 (defn add-goal [state goal-match-team shooter-id goal-against-match-team goalie-id]
@@ -131,11 +172,27 @@
                    :add-goal/shooter-id uuid? :add-goal/goal-against-match-team keyword?
                    :add-goal/goalie-id uuid?)
     [state goal-match-team shooter-id goal-against-match-team goalie-id])
+  (let [type (cond (get-in state [:teams goal-match-team :power-play?]) :power-play
+                   (get-in state [:teams goal-match-team :short-handed?]) :short-handed
+                   :else nil)]
+    (-> state
+        (assoc-in [:teams goal-match-team :last-goal] (:seconds state))
+        (update-in [:teams goal-match-team :goals] inc)
+        (update-in [:teams goal-against-match-team :goals-against] inc)
+        ;; FIXME: Doesn't seem to be getting through?
+        (update-in [:teams goal-match-team :players shooter-id :goals] inc)
+        ;; FIXME: goalie-id might be nil, this might effect stats calculation
+        (update-in [:teams goal-against-match-team :players goalie-id :goals-against] inc)
+        (add-event :goal goal-match-team shooter-id goal-against-match-team goalie-id type))))
+
+(defn add-penalty [state match-team player-id length]
+  (s/assert (s/cat :add-minor/state ::state :add-minor/match-team keyword?
+                   :add-minor/player-id :keyword?)
+            [state match-team player-id])
   (-> state
-      (update-in [:teams goal-match-team :players shooter-id :goals] inc)
-      ;; FIXME: goalie-id might be nil, this might effect stats calculation
-      (update-in [:teams goal-against-match-team :players goalie-id :goals-against] inc)
-      (update :events #(conj % [:goal (:seconds state) goal-match-team shooter-id goal-against-match-team goalie-id]))))
+      (assoc-in [:teams match-team :players player-id :status] ::player/penalty)
+      (update-in [:teams match-team :penalty-box] #(assoc % player-id {:time (:seconds state) :length length}))
+      (add-event :penalty match-team player-id length)))
 
 ;; Simulating the second should roughly be smth like this:
 ;; shift?
@@ -174,15 +231,17 @@
     [team field])
   (get-in team [:players (field/get-center field)]))
 
-(defn power-play? [state team]
-  ;; FIXME: We may have to be calculating penalt boxes for both teams
-  ;; in order to know what is the real state, 5-4, 5-3, 4-3, 4-4, 3-3
-  (:power-play? team))
+(defonce opposing-match-team {:home :away :away :home})
 
-(defn short-handed [state team]
-  ;; FIXME: We may have to be calculating penalt boxes for both teams
-  ;; in order to know what is the real state, 5-4, 5-3, 4-3, 4-4, 3-3
-  (:short-handed? team))
+(defn power-play? [state team]
+  (let [other (get-in state [:teams (opposing-match-team (:match-team team))])]
+    (< (min 2 (count (:penalty-box team)))
+       (min 2 (count (:penalty-box other))))))
+
+(defn short-handed? [state team]
+  (let [other (get-in state [:teams (opposing-match-team (:match-team team))])]
+    (> (min 2 (count (:penalty-box team)))
+       (min 2 (count (:penalty-box other))))))
 
 (defn power-play-forwards? [team]
   (let [field-index (:current-field-forwards team)]
@@ -200,35 +259,17 @@
   (let [field-index (:current-field-defenders team)]
     (or (= 5 field-index) (= 6 field-index))))
 
-;; FIXME: We may not even need this predicate, we can map this directly to field change
-(defn shift-forwards? [state team]
-  (or (util/period-start? (:seconds state))
-      ;; no posession - should stop here
-      (>= (:seconds state) (or (:next-shift-forwards team) 0))
-      (and (:power-play? team) (not (power-play-forwards? team)))
-      (and (:short-handed? team) (not (short-handed-forwards? team)))
-      (and (not (:power-play? team)) (power-play-forwards? team))
-      (and (not (:short-handed? team)) (short-handed-forwards? team))))
-
-(defn shift-defenders? [state team]
-  (or (util/period-start? (:seconds state))
-      ;; no posession - should stop here
-      (>= (:seconds state) (or (:next-shift-defenders team) 0))
-      (and (:power-play? team) (not (power-play-defenders? team)))
-      (and (:short-handed? team) (not (short-handed-defenders? team)))
-      (and (not (:power-play? team)) (power-play-defenders? team))
-      (and (not (:short-handed? team)) (short-handed-defenders? team))))
-
 (defn shift-forwards* [state team idx]
   (s/assert (s/cat :shift-forwards*/state ::state :shift-forwards*/team ::team :shift-forwards*/idx int?)
     [state team idx])
   (let [match-team (:match-team team)
-        field (get-in team [:fields :forwards idx])]
+        field (get-in team [:fields :forwards idx])
+        max-forwards (max 1 (- 3 (count (:penalty-box team))))]
     (s/assert (s/cat :shift-forwards*/match-team keyword? :shift-fowards*/field ::team/field)
       [match-team field])
     (-> state
         ;; TODO: Reset on-ice? for players in old field and set it for the new field
-        (assoc-in [:teams match-team :field 2] (field/pick-forwards-for-field team (:players field)))
+        (assoc-in [:teams match-team :field 2] (field/pick-forwards-for-field team (:players field) max-forwards))
         (assoc-in [:teams match-team :current-field-forwards] idx)
         (assoc-in [:teams match-team :next-shift-forwards] (+ (:seconds state) (:shift-length field))))))
 
@@ -236,12 +277,27 @@
   (s/assert (s/cat :shift-forwards/state ::state :shift-forwards/team ::team) [state team])
   (cond
     ;; Always force shift to first field on period starts
+    ;; FIXME: But do check power-play? and short-handed?
     (util/period-start? (:seconds state))
       (shift-forwards* state team 0)
     ;; Never do shift is the team doesn't have posession
     ;; FIXME: Do some probability based rand here
     (not= (:posession state) (:match-team team))
       state
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:power-play? team) (not (power-play-forwards? team)))
+      ;; Power-play started, put on the first power-play field
+      (shift-forwards* state team 4)
+    (and (not (:power-play? team)) (power-play-forwards? team))
+      ;; Power-play ended, put on the first field
+      (shift-forwards* state team 0)
+    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
+    (and (:short-handed? team) (not (short-handed-forwards? team)))
+      ;; Short-hand situation started, put on the first short-handed field
+      (shift-forwards* state team 6)
+    (and (not (:short-handed? team)) (short-handed-forwards? team))
+      ;; Short-hand situation ended, put on the first field
+      (shift-forwards* state team 0)
     ;; TODO: Test
     ;; See if the time for current shift is past due
     (>= (:seconds state) (or (:next-shift-forwards team) 0))
@@ -252,14 +308,6 @@
                            (:short-handed? team) (util/mod-to-range next-raw-idx 6 7)
                            :else (util/mod-to-range next-raw-idx 0 3))]
         (shift-forwards* state team next-idx))
-    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
-    (and (:power-play? team) (not (power-play-forwards? team)))
-      ;; Power-play started, put on the first power-play field
-      (shift-forwards* state team 4)
-    ;; FIXME: We'd need to be aware of different power-play constructions, 5-4, 5-3, 4-3
-    (and (:short-handed? team) (not (short-handed-forwards? team)))
-      ;; Short-hand situation started, put on the first short-handed field
-      (shift-forwards* state team 6)
     :else state))
 
 (defn shift-defenders* [state team idx]
@@ -320,26 +368,40 @@
 ;; one player less than the other and skills are probably biased towards A and D
 ;; respectively. We should include PP and SH in calculating posession and shot
 ;; probabilities
+
+;; FIXME: These are totally arbitrary
+(def power-play-multiplier (/ 1.25 1))
+(def short-handed-multiplier (/ 1 1.25))
+
 (defn calculate-field-attack [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-attack team %))
        (reduce + 0)
-       (#(/ % 5))))
+       (* (cond (:power-play? team) power-play-multiplier
+                (:short-handed? team) short-handed-multiplier
+                :else 1))
+       (* 0.2)))
 
 (defn calculate-field-defense [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-defense team %))
        (reduce + 0)
-       (#(/ % 5))))
+       (* (cond (:power-play? team) power-play-multiplier
+                (:short-handed? team) short-handed-multiplier
+                :else 1))
+       (* 0.2)))
 
 (defn calculate-field-skill [team field]
   (->> (field/get-players field)
        (map #(get-in team [:players %]))
        (map #(player/calculate-match-skill team %))
        (reduce + 0)
-       (#(/ % 5))))
+       (* (cond (:power-play? team) power-play-multiplier
+                (:short-handed? team) short-handed-multiplier
+                :else 1))
+       (* 0.2)))
 
 (defn calculate-field-goalie [team field]
   (or (:defense (get-in team [:players (first field)])) 0))
@@ -363,17 +425,23 @@
            (shift-goalie (get-in state [:teams :away])))
        (s/assert map?)))
 
-(defn face-off? [state]
-  (s/assert map? state)
-  ;; TODO: In addition to this, face-off should be flagged on previous second
-  ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
-  ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
-  (or (util/period-start? (:seconds state))
-      (:face-off? state)))
+(def mean-face-offs-per-sec (/ 30 game-length))
+
+(defn face-off?
+  ([state rand]
+    (s/assert map? state)
+    ;; TODO: In addition to this, face-off should be flagged on previous second
+    ;; if there is a goal or a penalty, and by some random factor if there was a save/miss/block
+    ;; (too specific?). In addition to this we perform some random factor to decide on face-off.
+    (or (util/period-start? (:seconds state))
+        (= (get-in state [:teams :home :last-goal]) (dec (:seconds state)))
+        (= (get-in state [:teams :away :last-goal]) (dec (:seconds state)))
+        (< (rand) mean-face-offs-per-sec)))
+  ([state]
+    (face-off? state rand)))
 
 ;; TODO: I need tests! All these functions have to take either [state r] or [state] that calls [state r] with default random generator
 (defn simulate-face-off [state]
-  ; (println "simulate-face-off" (get-in state [:teams :home :field]))
   (s/assert map? state)
   (let [team-a (get-in state [:teams :home])
         team-b (get-in state [:teams :away])
@@ -383,7 +451,9 @@
       [team-a team-b center-a center-b])
     ;; TODO: Should be affected by whole skill of centers, attack + defense
     ;; TODO: If we use a face-off flag from previous second, reset that flag.
-    (if (< (player/calculate-match-skill team-a center-a) (rand (+ (player/calculate-match-skill team-a center-a) (player/calculate-match-skill team-b center-b))))
+    (if (< (rand (+ (player/calculate-match-skill team-a center-a)
+                    (player/calculate-match-skill team-b center-b)))
+           (player/calculate-match-skill team-a center-a))
         (add-face-off state :home (:id center-a) :away (:id center-b))
         (add-face-off state :away (:id center-b) :home (:id center-a)))))
 
@@ -393,22 +463,47 @@
 ;; Ane also if team performed a shift this second there is a smaller chance to gain posession
 (defn simulate-posession* [state]
   (s/assert map? state)
-  (let [skill-a (calculate-field-skill (get-in state [:teams :home]) (get-in state [:teams :home :field]))
-        skill-b (calculate-field-skill (get-in state [:teams :away]) (get-in state [:teams :away :field]))]
-    (if (< skill-a (rand (+ skill-a skill-b)))
+  (let [[multiplier-a multiplier-b] (cond (nil? (:posession state)) [1 1]
+                                          (= :home (:posession state)) [2 0.5]
+                                          :else [0.5 2])
+        skill-a (* multiplier-a (calculate-field-skill (get-in state [:teams :home])
+                                                       (get-in state [:teams :home :field])))
+        skill-b (* multiplier-b (calculate-field-skill (get-in state [:teams :away])
+                                                       (get-in state [:teams :away :field])))]
+    (if (< (rand (+ skill-a skill-b)) skill-a)
       (add-posession state :home)
       (add-posession state :away))))
 
 (defn simulate-posession [state]
   (s/assert map? state)
   (if (face-off? state)
-      ;; FIXME: Something is losing info here, it's proven that it's not this
       (simulate-face-off state)
       (simulate-posession* state)))
 
+(defn get-penalty-sitter [team field]
+  (s/assert (s/cat :get-shooter/team ::team :get-shooter/field ::field/field) [team field])
+  ;; FIXME: Bias with character and defense attributes
+  (get-in team [:players (util/rnd-nth (field/get-players field))]))
+
+(defn simulate-penalties* [state team]
+  (s/assert (s/cat :simulate-penalties*/state ::state :simulate-penalties*/team ::team) [state team])
+  (cond
+    (minor?) (add-penalty state (:match-team team) (:id (get-penalty-sitter team (:field team))) 120)
+    (major?) (add-penalty state (:match-team team) (:id (get-penalty-sitter team (:field team))) 300)
+    ;; Used to test pp/sh fields
+    ; (and (= :home (:match-team team)) (= 3550 (:seconds state)))
+    ;  (add-penalty state (:match-team team) (:id (get-penalty-sitter team (:field team))) 120)
+    :else state))
+
+(defn simulate-penalties [state]
+  (-> state
+      (simulate-penalties* (get-in state [:teams :home]))
+      (simulate-penalties* (get-in state [:teams :away]))))
+
 (defn simulate-extras [state]
   (s/assert map? state)
-  state)
+  (-> state
+      simulate-penalties))
 
 (defn get-posession [state]
   (s/assert map? state)
@@ -427,6 +522,7 @@
   (s/assert map? state)
   (get-in state [:teams (get-non-posession state)]))
 
+;; TODO: Should PP and SH affect goal probability?
 (defn simulate-goal [state shooter attacking-team defending-team]
   (s/assert (s/cat :simulate-goal/state ::state :simulate-goal/shooter ::player
                    :simulate-goal/attacking-team ::team :simulate-goal/defending-team ::team)
@@ -445,6 +541,7 @@
         (add-miss state (:match-team attacking-team) (:id shooter))
         (simulate-goal state shooter attacking-team defending-team))))
 
+;; TODO: Should PP and SH affect block probability?
 (defn simulate-block [state shooter attacking-team defending-team]
   (s/assert (s/cat :state ::state :shooter ::player :attacking-team ::team :defending-team ::team) [state shooter attacking-team defending-team])
   (let [blocker (get-blocker defending-team (:field defending-team))]
@@ -466,7 +563,8 @@
         defending-team (get-in state [:teams (get-non-posession state)])
         attack (calculate-field-attack attacking-team (:field attacking-team))
         defense (calculate-field-defense defending-team (:field defending-team))]
-    (if (shot? attack defense)
+    (if (and (< (+ 5 (:last-shot defending-team)) (:seconds state))
+             (shot? attack defense))
       (simulate-shot* state attacking-team defending-team)
       state)))
 
@@ -479,18 +577,36 @@
       (simulate-attrs* (get-in state [:teams :home]))
       (simulate-attrs* (get-in state [:teams :away]))))
 
-(defn simulate-penalty-releases* [state team]
-  state)
-
-(defn simulate-penalty-releases [state]
+(defn release-penalty-sitter [state match-team player-id]
   (-> state
-      (simulate-penalty-releases* state (get-in state [:teams :home]))
-      (simulate-penalty-releases* state (get-in state [:teams :away]))))
+      (assoc-in [:teams match-team :players player-id :status] ::player/dressed)
+      (update-in [:teams match-team :penalty-box] dissoc player-id)))
+
+(defn simulate-penalty-release* [state team]
+  ;; TODO: Release oldest minor penalty if opposing team made a goal second before and this team is short-handed
+  (let [released (filter #(>= (:seconds state) (+ (:time (second %)) (:length (second %))))
+                         (:penalty-box team))]
+    (reduce #(release-penalty-sitter %1 (:match-team team) (first %2)) state released)))
+
+(defn mark-power-play [state team]
+  (assoc-in state [:teams (:match-team team) :power-play?] (power-play? state team)))
+
+(defn mark-short-handed [state team]
+  (assoc-in state [:teams (:match-team team) :short-handed?] (short-handed? state team)))
+
+(defn simulate-penalty-release [state]
+  (-> state
+      (simulate-penalty-release* (get-in state [:teams :home]))
+      (simulate-penalty-release* (get-in state [:teams :away]))
+      (mark-power-play (get-in state [:teams :home]))
+      (mark-power-play (get-in state [:teams :away]))
+      (mark-short-handed (get-in state [:teams :home]))
+      (mark-short-handed (get-in state [:teams :away]))))
 
 (defn simulate-second [state]
   (s/assert ::state state)
   (-> state
-      simulate-penalty-releases
+      simulate-penalty-release
       simulate-shifts
       simulate-posession
       simulate-extras
@@ -544,6 +660,7 @@
           :current-field-forwards nil
           :current-field-defenders nil
           :field [nil nil nil]     ;; Needs to be initialized like with field full of nil position vectors so changing players also create the same structure
+          :penalty-box {}
           :shots 0
           :blocked 0
           :missed 0
@@ -556,7 +673,6 @@
            :away (prepare-team :away away)}
    :events []})
 
-;; Team looked like this:
 (defn simulate-game [home away]
   (let [state (prepare-state home away)
         seconds (range 3600)
@@ -568,3 +684,15 @@
 (def team-b (team/make-test-team 55 80))
 
 (def state (prepare-state team-a team-b))
+
+(defn team-stats [state team]
+  {:shots (count (filter #(and (= :shot (first %)) (= team (nth % 2))) (:events state)))
+   :sog (count (filter #(and (= :sog (first %)) (= team (nth % 2))) (:events state)))
+   :goals (count (filter #(and (= :goal (first %)) (= team (nth % 2))) (:events state)))
+   :penalties (count (filter #(and (= :penalty (first %)) (= team (nth % 2))) (:events state)))
+   :power-play-shots (count (filter #(and (= :shot (first %)) (= :power-play (last %)) (= team (nth % 2))) (:events state)))
+   :power-play-sog (count (filter #(and (= :sog (first %)) (= :power-play (last %)) (= team (nth % 2))) (:events state)))
+   :power-play-goals (count (filter #(and (= :goal (first %)) (= :power-play (last %)) (= team (nth % 2))) (:events state)))
+   :short-handed-shots (count (filter #(and (= :shot (first %)) (= :short-handed (last %)) (= team (nth % 2))) (:events state)))
+   :short-handed-sog (count (filter #(and (= :sog (first %)) (= :short-handed (last %)) (= team (nth % 2))) (:events state)))
+   :short-handed-goals (count (filter #(and (= :goal (first %)) (= :short-handed (last %)) (= team (nth % 2))) (:events state)))})

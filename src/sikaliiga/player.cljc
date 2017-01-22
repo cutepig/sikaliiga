@@ -47,16 +47,10 @@
 
 ;; TODO: Tests
 (defn calculate-match-attack [team player]
-  (let [modifier (cond (:power-play? team) (:power-play player)
-                       (:short-handed? team) (:short-handed player)
-                       :else 0)]
-       (* (+ (:attack player) modifier) (* 0.5 (+ (:morale player) (:fitness player))))))
+  (* (:attack player) (* 0.5 (+ (:morale player) (:fitness player)))))
 
 (defn calculate-match-defense [team player]
-  (let [modifier (cond (:power-play? team) (:power-play player)
-                       (:short-handed? team) (:short-handed player)
-                       :else 0)]
-       (* (+ (:defense player) modifier) (* 0.5 (+ (:morale player) (:fitness player))))))
+  (* (:defense player) (* 0.5 (+ (:morale player) (:fitness player)))))
 
 (defn calculate-match-skill [team player]
   (* 0.5 (+ (calculate-match-attack team player)
@@ -119,10 +113,10 @@
      :attack-potential attack-potential
      :defense defense
      :defense-potential defense-potential
-     :power-play (rnd -0.1 -0.1)
-     :short-handed (rnd -0.1 -0.1)
      :fitness 1
      :morale 1
+     :character (rand)
+     :leadership (rand)
      :status ::dressed}))
 
 (defn make-test-player [id attack defense position status]
