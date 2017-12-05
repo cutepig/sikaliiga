@@ -15,3 +15,5 @@ pom.xml
 .idea/
 dev/repl.clj
 *.iml
+*.idea
+*.vscode

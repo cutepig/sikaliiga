@@ -94,7 +94,10 @@
   ;; Please see:
   ;; https://github.com/bhauman/lein-figwheel/wiki/Using-the-Figwheel-REPL-within-NRepl
 
-
+  ;; $ lein repl
+  ;; (use 'figwheel-sidecar.repl-api)
+  ;; (start-figwheel!)
+  ;; (cljs-repl)
   :profiles {:dev {:dependencies [[binaryage/devtools "0.8.2"]
                                   [figwheel-sidecar "0.5.8"]
                                   [com.cemerick/piggieback "0.2.1"]
