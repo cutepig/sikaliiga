@@ -1,4 +1,5 @@
 /resources/public/js/compiled/**
+/resources/public/css/**
 figwheel_server.log
 pom.xml
 *jar
@@ -6,6 +7,7 @@ pom.xml
 /classes/
 /out/
 /target/
+/node_modules/
 .lein-deps-sum
 .lein-repl-history
 .lein-plugins/
@@ -13,7 +15,6 @@ pom.xml
 .nrepl-port
 .env
 .idea/
-dev/repl.clj
 *.iml
 *.idea
 *.vscode

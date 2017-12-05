@@ -1,0 +1,28 @@
+{
+  "name": "sikaliiga",
+  "version": "0.0.1",
+  "description": "FIXME: Write a one-line description of your library/project.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "node-sass --include-path=./src --source-map true --importer node_modules/node-sass-once-importer/dist/cli.js --output-style compressed src/sikaliiga/ui/core.scss resources/public/css/style.css",
+    "watch:css": "chokidar package.json \"src/**/*.scss\" --initial --command \"npm run build:css\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@gitlab.com/toukkapoukka/sikaliiga.git"
+  },
+  "keywords": [],
+  "author": "Alex Seidler",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://gitlab.com/toukkapoukka/sikaliiga/issues"
+  },
+  "homepage": "https://gitlab.com/toukkapoukka/sikaliiga#README",
+  "devDependencies": {
+    "chokidar-cli": "^1.2.0",
+    "concurrently": "^3.5.1",
+    "node-sass": "^4.7.2",
+    "node-sass-once-importer": "^5.0.0"
+  }
+}
